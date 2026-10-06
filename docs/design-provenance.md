@@ -32,10 +32,12 @@ These public sources should be revisited during corresponding feature work; the 
 - [Rust age library](https://docs.rs/age/latest/age/) — select and pin a released version/features before integration.
 - [OWASP SSRF prevention](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html) — review destination validation and redirect risks when a network adapter is added.
 - [GitHub installation token documentation](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app) — provider resource/permission/lifetime behavior if GitHub is chosen.
-- [Rust Command documentation](https://doc.rust-lang.org/std/process/struct.Command.html) — executable lookup, environment, and argument caveats for a future trusted-consumer runner.
+- [Rust Command documentation](https://doc.rust-lang.org/std/process/struct.Command.html) — executable lookup, environment and argument caveats when designing a protected recipient launch adapter; no generic runner is planned.
 - [MCP tools, 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25/server/tools) — annotations remain descriptive hints rather than broker authority.
 
 ## Evidence discipline
+
+The required [protected application-delivery design](application-delivery.md#platform-proposals-and-primary-references) checked primary systemd credentials, Linux Yama/openat2, Apple Gatekeeper/runtime protection and Microsoft AppContainer/process access documentation on 2026-10-06. Its platform arrangements are inferences and proposals only; none establishes tested Aegis delivery, confinement or human authentication. [ADR 0007](adr/0007-protected-application-delivery.md) supersedes the earlier optional consumer-delivery direction.
 
 ADRs record accepted directions and outstanding experiments. [Verification](verification.md) records actual tested scope and gaps. Neither a design recommendation nor a successful synthetic API test should be presented as a storage, platform, presence, containment, or external-effect guarantee.
 

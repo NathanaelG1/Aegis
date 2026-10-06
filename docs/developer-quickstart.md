@@ -2,6 +2,8 @@
 
 This workflow exercises synthetic data in the dedicated Aegis checkout. It needs no account, token, password, provider, operational vault, or OS security change.
 
+Protected agent-blind application delivery is required but not yet implemented or verified. Read its [design](application-delivery.md) and [implementation gates](roadmap.md#d--protected-application-delivery) before proposing any recipient integration. The current binary has no protected-file, descriptor or credential-store delivery path. These instructions do not enroll services, modify OS permissions or authorize real credential input.
+
 ## Build and inspect
 
 The crate is `aegis-broker`; its Rust library is `aegis` and its executable is `aegis`. Package publication is disabled. `rust-toolchain.toml` pins Rust 1.96.1; the package declares Rust 1.96 and edition 2021. The resolved optional graph includes dependencies using newer editions, so the earlier core-only Rust 1.80.1 check is historical, not support for the current graph.

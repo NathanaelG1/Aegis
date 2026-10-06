@@ -2,6 +2,8 @@
 
 Use Aegis to request a specific operation and receive a bounded result. Never supply a credential, unlock password, raw URL, shell command, or an approval claim in an agent request.
 
+This quickstart covers only implemented synthetic operation tools. Required [protected application delivery](application-delivery.md) is not yet implemented or verified: there are no delivery proposal, enrollment or installation tools. Do not use file/shell tools to copy credentials or treat same-account terminal separation as a protected delivery boundary. The planned agent workflow uses secret references and returns safe status; it never returns token bytes.
+
 ## Foreground broker and stdio MCP
 
 A human first starts `aegis synthetic-broker --socket-dir <new-absolute-directory>` in a separate terminal. Configure your stdio client to launch the existing binary with these arguments:

@@ -1,10 +1,10 @@
 # Threat model
 
-**Status:** Implemented synthetic policy/Unix/MCP foundation with an optional fixed-fixture recovery experiment. No independent audit, proven human-presence mechanism, real-secret storage guarantee, or OS containment deployment is established.
+**Status:** Implemented synthetic policy/Unix/MCP foundation with an optional fixed-fixture recovery experiment. Protected agent-blind application delivery is required but not yet implemented or verified. No independent audit, proven human-presence mechanism, real-secret storage guarantee, or OS containment deployment is established.
 
 ## Product promise and boundary
 
-The intended promise is that an agent can invoke only the reviewed operations delegated to its broker-bound principal/session and receives only the operation's authorized result. Human administration and approval are separate from agent requests. Credentials are used by the trusted broker/executor rather than copied into the agent protocol.
+The intended promise is that an agent can invoke only the reviewed operations delegated to its broker-bound principal/session and receives only the operation's authorized result. It must also be able to propose application configuration using secret references while the broker delivers the token directly to an approved isolated application and the agent is unable to read it. Human administration and approval are separate from agent requests. Credentials are used by the trusted broker/executor or enrolled recipient rather than copied into the agent protocol. The [application-delivery design](application-delivery.md) specifies the unimplemented boundary and approval requirements.
 
 The first proof is narrower: the synthetic in-memory broker enforces its tested API contracts, concurrency, and failure semantics. The Unix workflow retains control in the foreground terminal while the MCP process has only an agent socket bridge. Current-UID checks, new private directories, cached canonical review, and per-broker epochs enforce specific workflow rules. They do not stop same-account code from automating control or bypassing its own trust boundary. The trusted Rust embedding process can also hold both handles. A malicious embedding host can obtain or bypass its own capabilities.
 
@@ -19,6 +19,7 @@ The first proof is narrower: the synthetic in-memory broker enforces its tested 
 | Provider result data | May be sensitive, hostile, misleading, oversized, or malformed |
 | Private metadata and audit data | May reveal account/resource names or activity even without credentials |
 | Broker binary, configuration, adapters, and dependency graph | A change can bypass policy or leak credential material |
+| Enrolled recipient, protected configuration and delivery destination | Code, dependency, route, slot or process substitution can expose plaintext after approval |
 | Future snapshots, identity, backups, and recovery kit | Need confidentiality, valid schema, recoverability, and explicit rollback limits |
 
 ## Adversaries and failures
@@ -37,6 +38,8 @@ Also consider accidental logs/debugging, panics, crashes, corruption, clock/life
 
 Do not choose a stronger label because a configuration says tools are restricted. Record and test enforcement. A dedicated non-administrator identity may be appropriate later; a root/system broker is not a convenience shortcut.
 
+Protected application delivery cannot be offered as a confidentiality guarantee in the trusted same-user workflow. It requires tested separate service identities or actual agent confinement, protected recipient files/process resources and independently authenticated human control. Agent-writable recipient code/dependencies/plugins/configuration or agent-controlled supervisor/container/debug interfaces invalidate it. File mode `0600`, peer UID checks and redaction alone cannot prevent agent access. Delivery must refuse an unsupported or changed boundary before handoff. No such refusal/confinement verifier is implemented today.
+
 ## Boundary analysis
 
 | Boundary | Required defense | Synthetic check | Remaining work |
@@ -50,6 +53,8 @@ Do not choose a stronger label because a configuration says tools are restricted
 | Host -> broker/control | Prevent editing binaries/config, memory/file reads, control synthesis | Same-account Unix peer checks implemented; account itself is trusted and uncontained | Host-specific spike with bypass attempts |
 | Storage -> policy | Full validation, owner-controlled writer, non-authoritative catalog | No storage implementation | Permissions, provenance, import/restore, rollback tests |
 | Recovery -> ready | Independently saved kit plus fresh process restoration | Fixed synthetic snapshot restored in a fresh process; grants disabled/session empty | Operational gate, independent custody, platform/cancellation/fault tests |
+| Broker -> application | Immutable approval, enrolled isolated recipient, protected destination and durable handoff state | No delivery implementation or tests | File/descriptor/store adapters, confinement, authenticated control and crash reconciliation |
+| Agent -> recipient plaintext | Deny file/store/env/memory/handle reads and code/config/route substitution | No OS boundary tested | Synthetic adversarial processes, path races, malicious plugins/proxies/diagnostics and per-platform evidence |
 
 The Unix endpoint caps active connections at eight, uses bounded frame I/O, rejects existing/symlink-component paths, and checks the current UID on server/client. A random broker epoch prevents an existing bridge from silently following a restart. Path checks are nonatomic and same-account code remains trusted; an epoch does not authenticate a trusted broker binary. All socket connections currently share one principal/session. See [verification](verification.md) for actual observed outcomes and gaps.
 
@@ -66,6 +71,8 @@ No live network adapter is authorized or implemented in the first foundation. A 
 Transport must validate the destination used for the actual connection, including DNS/address behavior. A preflight string allowlist with a different connection path does not establish destination safety. Private-network providers need explicit profiles. Provider-enforced least privilege and short-lived tokens reduce consequences but do not replace broker policy.
 
 ## Storage and recovery risks
+
+Future protected delivery must cover plaintext in installed/staged objects, descriptors/handles, process memory, environment, logs, backups, dumps and application diagnostics. Protected configuration cannot be read from a mutable agent workspace. The approved recipient is trusted to avoid exporting its token; granting it arbitrary output, plugin or proxy routes defeats isolation. File installation needs enrolled directory/object handles, symlink/hardlink and parent/mount/reparse defenses, versioned atomic installation and fault-tested journal recovery. Unknown handoff outcomes consume authority and prohibit automatic retry. See [delivery acceptance gates](application-delivery.md#synthetic-adversarial-acceptance-gates).
 
 The optional age 0.11.1 [synthetic spike](storage-spike.md) saves a fixed encrypted snapshot and a separate recovery kit, then restores in a fresh process with grants disabled and sessions empty. It accepts no caller-provided real values and does not become broker authority or an operational `ready` state. The operational backend remains planned. Recipient encryption does not certify that the policy came from an authorized writer: an attacker who knows a public recipient can create a new encrypted snapshot. Live storage ownership and restore/import grant disabling matter. A future untrusted writer/synchronization feature needs policy provenance anchored outside the attacker-controlled store.
 
@@ -88,6 +95,8 @@ A terminal controlled by the same fully privileged account can establish a workf
 ## Explicit non-guarantees
 
 - No containment of arbitrary same-user code or a compromised host/kernel.
+- No protected application delivery, recipient enrollment, independent human authentication, protected-file/handle/store installation or verified agent-blind plaintext boundary.
+- No retraction of already delivered plaintext; future-delivery revocation, local cleanup, recipient termination and provider revocation have separate effects.
 - No production credential custody, recovery, or filesystem durability yet.
 - No exactly-once external effects or automatic safe refund after an unknown outcome.
 - No persistent cross-session/cross-restart call budget.

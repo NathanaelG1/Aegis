@@ -2,6 +2,8 @@
 
 **Status:** Accepted for the foundation. **Date:** 2026-10-06.
 
+**Partial supersession:** [ADR 0007](0007-protected-application-delivery.md) makes protected agent-blind application delivery a required product path and supersedes the optional consumer direction below. The implemented synthetic operation-first foundation remains unchanged.
+
 ## Context
 
 The design centers delegated operations rather than copying a credential into arbitrary agent-controlled code. The implementation and tests use synthetic fixtures, without live providers, real secrets, credential migration or production use.

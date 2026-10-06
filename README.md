@@ -2,7 +2,9 @@
 
 An experimental local capability broker for developer and agent workflows.
 
-Aegis's intended contract is: a human privately provisions credentials and approves bounded authority; an agent invokes a reviewed operation; the broker uses the credential locally and returns only a validated result. Keeping a token out of a model's context and making an action safe are separate responsibilities.
+**Experimental capability broker; protected agent-blind application delivery is required but not yet implemented or verified.**
+
+Aegis mediates between a human, an agent, and an application. A human privately provisions credentials and approves bounded authority. An agent can request a reviewed operation or propose configuring two systems using secret references. The intended broker either uses the credential for the approved operation or delivers it directly to an approved isolated application's protected file, descriptor, or credential store. The agent receives only validated results or safe delivery status and must be unable to read the delivered token. Keeping a token out of a model's context and preventing agent-executed code from reading it are separate responsibilities.
 
 **Current stage: synthetic foundation.** This repository implements an in-memory Rust broker, a fake provider, an explicitly started Unix foreground broker, and a thin stdio MCP client. An optional age experiment saves and restores only a fixed synthetic fixture in separate processes. There is no real credential input, live provider connection, operational vault, or production setup path. It is not independently audited. A same-user process is not an operating-system containment boundary.
 
@@ -26,11 +28,11 @@ For a separate human terminal and agent client, use `aegis synthetic-broker --so
 
 ## What is being built
 
-The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. A useful live provider operation and an operational portable `age` backend remain release work.
+The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. Protected application delivery is an essential additional product requirement, not an optional plaintext-export convenience. Its [design contract](docs/application-delivery.md) specifies reference-only proposals, immutable human approval, recipient enrollment, safe status, revocation limits, and adversarial acceptance gates. None of those delivery interfaces or OS protections are implemented. A useful live provider operation and an operational portable `age` backend also remain release work.
 
 The synthetic foundation focuses on deterministic policy and request state: prepare, request approval, invoke, and inspect a result. Grant-use reservation and revocation share a broker-owned serialization point. Retrying a request ID must return existing state or explicit uncertainty; it must not silently repeat an unknown external effect.
 
-The agent surface has no raw-secret method, arbitrary execution method, approval boolean, arbitrary URL proxy, or credential-input prompt. The future trusted-consumer delivery path deliberately transfers plaintext and will require a separate contract and review.
+The agent surface has no raw-secret method, arbitrary execution method, approval boolean, arbitrary URL proxy, or credential-input prompt. Planned delivery sends plaintext only between the trusted broker and an enrolled recipient. It requires separate service identities or an actually confined agent, protected recipient code/dependencies/configuration and process resources, and independently authenticated human control. An unrestricted same-UID agent, agent-writable recipient code or security-relevant configuration, or agent-controlled container/debug interface invalidates the guarantee. File mode `0600`, peer UID checks, and redaction alone are insufficient; unsupported delivery boundaries must fail closed.
 
 ## Read the contracts
 
@@ -38,6 +40,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 | --- | --- |
 | [Product and policy contracts](docs/contracts.md) | Authority objects, exact bindings, lifecycle, concurrency, retry, and error behavior |
 | [Architecture](docs/architecture.md) | Component boundaries and current versus planned interfaces |
+| [Protected application delivery](docs/application-delivery.md) | Required agent-blind configuration workflow, immutable approval, OS boundary, and implementation gates; design only |
 | [Threat model](docs/threat-model.md) | Assets, adversaries, workflow limits, and evidence required for stronger modes |
 | [Standalone binary](docs/standalone-binary.md) | Local release artifact, broker/client executable layout, runtime requirements and Mac-only evidence |
 | [Developer quickstart](docs/developer-quickstart.md) | Build, test, change, and debug safely |
@@ -53,6 +56,6 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 
 ## Platform and release status
 
-The tested local target is macOS 26.6.2 on arm64 with Rust 1.96.1. See [verification](docs/verification.md) for checks and limits. Linux peer-check code exists but is untested; Windows transport support is absent. Desktop lifecycle handling, protected headless approval, storage durability, and stronger host isolation remain unverified.
+The tested local target is macOS 26.6.2 on arm64 with Rust 1.96.1. See [verification](docs/verification.md) for checks and limits. Linux peer-check code exists but is untested; Windows transport support is absent. Protected application delivery, independent human authentication, desktop lifecycle handling, protected headless approval, storage durability, and OS isolation remain unimplemented or unverified. Linux, macOS, and Windows delivery arrangements are proposals requiring separate platform tests.
 
 Aegis source and documentation are available under the [MIT license](LICENSE). Third-party dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md) and the dependency inventory. Public source availability does not establish a reviewed production release. The [security policy](SECURITY.md) is a draft for this experimental project. Contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md).

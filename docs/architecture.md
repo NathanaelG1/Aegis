@@ -2,9 +2,9 @@
 
 ## Status and intended product
 
-Aegis is a local capability broker. The current checkpoint implements an in-memory synthetic Rust core, a Unix foreground workflow with separate terminal control and agent socket, and a thin stdio MCP client. The portable operational vault, protected human-presence mechanism, and live provider connection remain subsequent gates. An optional age module separately demonstrates saved-fixture recovery without becoming broker authority.
+Aegis is an experimental local capability broker; protected agent-blind application delivery is required but not yet implemented or verified. The current checkpoint implements an in-memory synthetic Rust core, a Unix foreground workflow with separate terminal control and agent socket, and a thin stdio MCP client. The portable operational vault, protected human-presence mechanism, live provider connection and application-delivery enforcement remain subsequent gates. An optional age module separately demonstrates saved-fixture recovery without becoming broker authority.
 
-The agent requests an operation, not a credential. A human-controlled authority delegates a fixed resource and bounded effects. The broker resolves the current protected policy, reserves authority, invokes a reviewed adapter, validates its response, and returns an explicit projection.
+For the implemented operation path, the agent requests an operation, not a credential. A human-controlled authority delegates a fixed resource and bounded effects. The broker resolves the current protected policy, reserves authority, invokes a reviewed adapter, validates its response, and returns an explicit projection. For the required future application-configuration path, the agent proposes secret references and non-secret intent; the broker delivers plaintext directly to an enrolled isolated recipient after separately authenticated human approval, with only safe status returned to the agent.
 
 ```mermaid
 flowchart LR
@@ -76,10 +76,26 @@ The planned operational snapshot uses released Rust `age` encryption with a loca
 
 Snapshot transactions, rekey, restore, strict creation permissions, symlink/reparse defense, resource limits, and OS durability remain design and fault-test work. Recipient encryption is not proof that a trusted policy writer authored a snapshot. Restore disables grants and sessions and uses a fresh destination.
 
-## Deliberate compatibility
+## Required protected application delivery
 
-A future trusted-consumer runner may deliver plaintext through a controlled pipe or environment. That consumer and any code/configuration it loads join the trust boundary. A binary digest cannot establish that agent-writable scripts, plugins, imports, or dependencies are fixed. This path has no implementation or security guarantee in this checkpoint.
+Protected application delivery is a required product path. The [delivery design](application-delivery.md) defines proposed reference-only workflows, immutable approval bindings, protected destinations and adversarial gates. No delivery type, method, recipient enrollment, installation or confinement check is implemented in this checkpoint.
+
+```mermaid
+flowchart LR
+    A[Agent: non-secret reference proposal] --> B[Trusted broker: resolve and reserve]
+    H[Independently authenticated human] --> B
+    P[Protected enrollment, build and config] --> B
+    S[Protected exact credential version] --> B
+    B --> D[Reviewed protected destination adapter]
+    D --> R[Enrolled isolated recipient]
+    B --> T[Bounded delivery status]
+    T --> A
+```
+
+This diagram is design only. The broker and recipient require an OS boundary that prevents agent reads of files/stores, memory, environment and descriptors/handles, and prevents agent modification of recipient code, dependencies, launch policy and security-relevant configuration. Separate service identities or an actually confined agent plus a protected recipient and independent human control are candidates. An unrestricted same-UID agent or agent-controlled container/debug interface is unsupported. The recipient must not load mutable security-relevant configuration from the agent workspace. A digest, file mode `0600`, peer UID or output redaction alone is insufficient; unsupported boundaries must fail closed.
+
+Approved destinations are enrolled protected file slots, direct descriptors/handles, or native credential-store items, never arbitrary agent-selected paths. Credential values cannot enter general process environment or command arguments. File installation must use the enrolled object/namespace and address symlink/hardlink, parent/mount races, atomic replacement and recovery. Unknown handoff outcomes retain consumed authority without automatic retry. Future-delivery revocation, local cleanup, recipient termination and provider revocation are distinct; delivered plaintext cannot be retracted.
 
 ## Explicit exclusions
 
-The initial architecture excludes remote access, root/system daemons, automatic startup/unlock, team synchronization, arbitrary plugins, automatic updating, generic credential reads, arbitrary execution, caller-selected URLs, and an execution sandbox. Platform containment is a separately tested deployment property.
+The implemented foundation excludes remote access, root/system daemons, automatic startup/unlock, team synchronization, arbitrary plugins, automatic updating, generic credential reads, arbitrary execution, caller-selected URLs, and an execution sandbox. Future protected-service arrangements require separately authorized enrollment and platform testing; this design does not install services or change permissions. Platform containment is a separately tested deployment property and a prerequisite for protected application delivery.

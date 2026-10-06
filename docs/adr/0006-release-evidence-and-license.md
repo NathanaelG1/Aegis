@@ -4,7 +4,7 @@
 
 ## Context
 
-Aegis source is public under an owner-approved MIT license. Portable architecture and passing synthetic tests do not establish a supported secrets product.
+Aegis source is licensed under an owner-approved MIT license. Portable architecture and passing synthetic tests do not establish a supported secrets product.
 
 ## Decision
 

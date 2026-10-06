@@ -1,6 +1,6 @@
 # Project status
 
-Aegis is an experimental synthetic-only capability broker. Source is public under MIT; no production secrets product, live provider, protected approval channel or audited release is available.
+Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
 ## Implemented
 
@@ -19,4 +19,6 @@ The current publication snapshot is checked with the same [quality script](../sc
 
 ## Remaining gates
 
-Protected human/agent integration, real-agent host testing, native lifecycle faults, separate identities where required, operational storage transactions/rekey/recovery, durable budgets, reference age CLI interoperability, other platforms, supply-chain/unsafe review and independent security composition review remain open. Same-account control is workflow separation, not containment. See [roadmap](roadmap.md).
+The required [application-delivery design](application-delivery.md) now specifies reference-only proposal/approval/delivery/status/revocation, immutable recipient and protected configuration bindings, direct protected destinations, fail-closed OS separation, ambiguous handoff reconciliation and distinct revocation effects. This is design work only: no Rust source, dependencies, executable behavior or test cases changed. The [delivery backlog](roadmap.md#d--protected-application-delivery) requires enforcement spikes and adversarial platform tests before implementation claims.
+
+Protected application delivery and recipient enrollment, independent human/agent integration, real-agent host testing, native lifecycle faults, actual OS separation, operational storage transactions/rekey/recovery, protected durable handoff/budgets, reference age CLI interoperability, other platforms, supply-chain/unsafe review and independent security composition review remain open. Same-account control is workflow separation, not containment. See [roadmap](roadmap.md).

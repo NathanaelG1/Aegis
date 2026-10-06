@@ -2,6 +2,8 @@
 
 This document separates the synthetic foundation's intended invariants from future release requirements. The executable tests and [verification record](verification.md) determine what has actually been demonstrated. No contract below authorizes real credentials, provider calls, or production use.
 
+Protected agent-blind application delivery is required but not yet implemented or verified. The operation objects and lifecycle below describe the current synthetic core. The separate [application-delivery contract](application-delivery.md) proposes typed reference-only proposal, approval, delivery, status and revocation workflows; it introduces no current wire methods.
+
 ## Authority objects
 
 | Object | Meaning | Binding rule |
@@ -20,7 +22,7 @@ Exact versions are the initial default. A future rotation alias must demonstrate
 
 The trusted control capability creates the synthetic frozen authority, reviews a resolved request, approves it, revokes the grant, and stops the session. The foreground CLI implements terminal `inspect ID`, `approve ID`, `cancel ID`, `revoke`, and `stop`; `approve_reviewed` compares the cached canonical plan, prepared handle, broker instance, and remaining uses in the same critical section that approves. The lower-level embedding `approve` capability does not attest to a displayed review. The agent client can discover, prepare, request approval, invoke, cancel a request before dispatch, and inspect scoped status. Scope denial returns an error rather than a retained `denied` lifecycle state.
 
-The agent-facing contract has no raw-secret read, generic execution, arbitrary HTTP/URL route, recipient change, export, or human approval method. Unknown fields such as `approved=true` must not become authority. Client-provided identity strings are display data only.
+The implemented agent-facing contract has no raw-secret read, generic execution, arbitrary HTTP/URL route, recipient change, export, or human approval method. Planned delivery may name only enrolled recipient/slot references under policy; it cannot change a recipient's protected enrollment or return plaintext. Unknown fields such as `approved=true` must not become authority. Client-provided identity strings are display data only.
 
 An agent approval request creates or refers to bounded pending state. It does not approve the request or attest to human presence. The current JSON-lines fixture leaves the request `awaiting_approval` and invocation returns `approval_required`; it has no private control connection. An integrated broker must return `interaction_required` where no supported human interaction is available. Neither path may prompt for passwords or ask for credentials in chat.
 
@@ -93,7 +95,7 @@ Invalidate the session when lifecycle state becomes untrustworthy. Suspension, s
 
 ## Inputs and outputs
 
-Start with one fixed fake status operation whose inputs select a bounded issue/resource. The adapter supplies the endpoint/authentication/route in later network implementations. An agent cannot provide an auth header, raw URL, route template, secret reference, or process command through a convenience field.
+Start with one fixed fake status operation whose inputs select a bounded issue/resource. The adapter supplies the endpoint/authentication/route in later network implementations. In this operation schema, an agent cannot provide an auth header, raw URL, route template, secret reference, or process command through a convenience field. The distinct planned delivery proposal accepts exact secret references only through its own reviewed schema and resolves them to enrolled protected recipients; it is not a general credential selector or export route.
 
 Return a typed, bounded projection such as numeric issue ID and enumerated state. Validate the provider response before release. Wrong ID/resource, unexpected status enum, oversize content, malformed schema, or unsupported output version produces a reviewed error. No raw response, headers, native exception, or arbitrary provider content is returned by default.
 
@@ -122,6 +124,8 @@ The design's 16 MiB snapshot and 64 KiB secret limits are measurement candidates
 Exact wire codes are experimental; see the tested protocol types for the current set. Error text is not a transport for credentials, full requests, or provider bodies.
 
 ## Persistent-secret gate
+
+Protected application delivery additionally requires independently authenticated human authority and a tested OS access boundary, immutable recipient/build/dependency/configuration/destination/endpoint bindings, protected durable reservation and handoff reconciliation, and the full synthetic adversarial gates. A token delivered to a recipient is plaintext disclosure to that trusted application; removing the broker grant does not erase it. Delivery budgets cannot count later recipient/provider calls without separate enforcement. See [the proposed delivery contract](application-delivery.md) for the unimplemented lifecycle and revocation limits.
 
 Planned operational persistent setup transitions `uninitialized -> pending_recovery -> ready`. Only a fresh process restoring the saved snapshot with independently saved recovery material may satisfy the recovery gate. The generating process decrypting its own canary with a retained key is insufficient. The optional [synthetic age spike](storage-spike.md) demonstrates fresh-process fixed-fixture recovery, but does not set any operational state to `ready` or satisfy the real-secret gate.
 

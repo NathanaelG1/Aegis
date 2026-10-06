@@ -2,6 +2,8 @@
 
 **Checkpoint:** 2026-10-06. The tested scope is a synthetic in-memory broker/fake provider, separate Unix foreground and MCP subprocesses, and an optional fixed-fixture age recovery experiment. Passing these tests establishes only their exercised behavior on the recorded build; it does not establish production readiness, real credential custody, genuine human presence, or OS containment.
 
+Protected agent-blind application delivery is required but not yet implemented or verified. Its [contract](application-delivery.md) and [ADR](adr/0007-protected-application-delivery.md) are documentation-only additions. They add no Rust code or tests; the recorded 85/99 counts cover the existing synthetic implementation, not delivery enforcement. No protected file installation, descriptor/store handoff, application enrollment, independently authenticated human control or OS confinement gate has been exercised.
+
 ## Environment
 
 | Item | Initial evidence / limit |
@@ -77,6 +79,8 @@ Each test should count dispatches and inspect the external result where appropri
 | Gate | Evidence needed before claim |
 | --- | --- |
 | Genuine human approval | Protected host/OS channel; agent cannot synthesize approval or reach control |
+| Protected application delivery | All [synthetic delivery acceptance gates](application-delivery.md#synthetic-adversarial-acceptance-gates), including file/env/memory/handle denial, immutable recipient/configuration/endpoint approval, forged consent, replay/restart, final-use/revoke races, path races, hostile plugins/proxies/outputs and refusal of missing confinement |
+| Protected installation and revocation | Enrolled directory/object/store identity, atomic install and crash/acknowledgement reconciliation; retained unknown outcomes without retry; separate future-delivery, cleanup, process and provider revocation evidence |
 | Restricted/isolated agent mode | Bypass attempts against binary/config, files, process memory, administrative API, and raw credentials |
 | Real agent harness | Actual host transcript with success, deterministic denial, private approval, resume, and concurrent sessions |
 | Broader MCP-host integration | Beyond the tested narrow adapter/subprocesses: actual agent hosts, version/lifecycle compatibility, protected approval/resume, and host capture behavior |
@@ -94,6 +98,8 @@ Each test should count dispatches and inspect the external result where appropri
 ## Interpretation limits
 
 The embedding process may contain both trusted control and agent handles. The foreground command separates terminal control from the agent Unix socket, and the MCP process contains only the bridge. Both still trust the same OS account. Session counters are intentionally volatile; the separate age fixture cannot restore broker authority. Request expiry is a dispatch authorization limit; a provider execution timeout needs separate enforcement and tests.
+
+Linux separate service identities/systemd credentials, macOS protected identities or confined-agent/hardened-recipient authenticated IPC, and Windows service identities/DACLs/AppContainer are delivery proposals only. None is a tested Aegis configuration. Mode `0600`, current-UID peer checks, a signed executable, container naming or redaction cannot substitute for demonstrated denial of agent reads and control. Recipient plaintext cannot be retracted by revoking a broker grant, and delivery-use counters cannot count later provider calls without separate enforcement.
 
 Current source implements terminal inspection before exact approval, current-UID checks on both Unix peers, a new `0700` directory with no overwrite/symlink components, eight-connection and I/O bounds, and random broker-epoch continuity. Linux peer code is untested. These source properties do not establish genuine human presence, hostile same-account containment, atomic path traversal, or universal filesystem support.
 
