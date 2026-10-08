@@ -84,6 +84,45 @@ pub(super) struct Enrollment {
     agent: Verifier,
     admin: Verifier,
 }
+impl Enrollment {
+    pub(super) fn from_verifiers(agent: Verifier, admin: Verifier) -> Self {
+        Self { agent, admin }
+    }
+}
+/// One simulated actor's signer. It cannot mint the other role's assertions.
+pub(super) struct ActorSigner {
+    key: Arc<SigningKey>,
+    agent: bool,
+}
+impl ActorSigner {
+    pub(super) fn agent(key: Arc<SigningKey>) -> Self {
+        Self { key, agent: true }
+    }
+    pub(super) fn admin(key: Arc<SigningKey>) -> Self {
+        Self { key, agent: false }
+    }
+    pub(super) fn sign(&self, c: &Challenge) -> Result<Signed, ErrorCode> {
+        if self.agent != c.purpose.agent() {
+            return Err(ErrorCode::AuthenticationRequired);
+        }
+        sign_challenge(&self.key, c)
+    }
+}
+fn sign_challenge(key: &SigningKey, c: &Challenge) -> Result<Signed, ErrorCode> {
+    key.sign(&Claims {
+        iss: c.purpose.subject().into(),
+        sub: c.purpose.subject().into(),
+        aud: c.purpose.audience().into(),
+        iat: c.issued,
+        exp: c.expires,
+        jti: c.nonce.clone(),
+        epoch: c.epoch.clone(),
+        purpose: c.purpose,
+        digest: c.digest.clone(),
+        enrollment_revision: c.enrollment_revision,
+        acl_revision: c.acl_revision,
+    })
+}
 impl Actors {
     pub fn enrollment(&self) -> Enrollment {
         Enrollment {
@@ -103,19 +142,7 @@ impl Actors {
         } else {
             &self.admin
         };
-        key.sign(&Claims {
-            iss: c.purpose.subject().into(),
-            sub: c.purpose.subject().into(),
-            aud: c.purpose.audience().into(),
-            iat: c.issued,
-            exp: c.expires,
-            jti: c.nonce.clone(),
-            epoch: c.epoch.clone(),
-            purpose: c.purpose,
-            digest: c.digest.clone(),
-            enrollment_revision: c.enrollment_revision,
-            acl_revision: c.acl_revision,
-        })
+        sign_challenge(key, c)
     }
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]

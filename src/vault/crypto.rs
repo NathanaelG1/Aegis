@@ -4,7 +4,7 @@ use crate::ErrorCode;
 use age::secrecy::ExposeSecret;
 use aws_lc_rs::{
     encoding::{AsDer, Pkcs8V1Der},
-    rsa::{KeyPair as RsaKeyPair, KeySize},
+    rsa::{KeyPair as RsaKeyPair, KeySize, PublicKey as RsaPublicKey},
     signature::KeyPair,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -45,6 +45,7 @@ impl Drop for Signed {
 #[derive(Clone)]
 pub(super) struct Verifier {
     key: DecodingKey,
+    public_der: Vec<u8>,
 }
 pub(super) struct SigningKey {
     der: PrivateBytes,
@@ -82,6 +83,7 @@ impl SigningKey {
             key: EncodingKey::from_rsa_der(parsed.private_key.as_bytes()),
             verify: Verifier {
                 key: DecodingKey::from_rsa_der(native.public_key().as_ref()),
+                public_der: native.public_key().as_ref().to_vec(),
             },
         })
     }
@@ -122,6 +124,28 @@ struct StrictHeader {
     typ: String,
 }
 impl Verifier {
+    /// Bounded, canonical public-only fixture input, parsed by AWS-LC.
+    /// Key parsing alone establishes no enrollment authority.
+    pub(super) fn from_fixture_der(der: &[u8]) -> Result<Self, ErrorCode> {
+        if der.is_empty() || der.len() > 1024 {
+            return Err(ErrorCode::InvalidRequest);
+        }
+        crate::signing::require_fixed_provider().map_err(|_| ErrorCode::ProviderUnavailable)?;
+        let parsed = RsaPublicKey::from_der(der).map_err(|_| ErrorCode::InvalidRequest)?;
+        if parsed.as_ref() != der {
+            return Err(ErrorCode::InvalidRequest);
+        }
+        Ok(Self {
+            key: DecodingKey::from_rsa_der(der),
+            public_der: der.to_vec(),
+        })
+    }
+    pub(super) fn fixture_der(&self) -> &[u8] {
+        &self.public_der
+    }
+    pub(super) fn same_key(&self, other: &Self) -> bool {
+        self.public_der == other.public_der
+    }
     pub(super) fn verify<T: DeserializeOwned>(&self, value: &Signed) -> Result<T, ErrorCode> {
         crate::signing::require_fixed_provider().map_err(|_| ErrorCode::ProviderUnavailable)?;
         let invalid = || ErrorCode::AuthenticationRequired;

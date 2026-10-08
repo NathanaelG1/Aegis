@@ -41,19 +41,35 @@ pub(super) struct Kit {
 }
 /// Role-limited runtime material. No agent/admin signer or recipient private key.
 pub(super) struct BrokerMaterial {
-    vault_id: String,
-    storage: Arc<Identity>,
-    writer: Arc<SigningKey>,
-    recipient: age::x25519::Recipient,
-    receipt: Verifier,
-    directory: PathBuf,
+    pub(super) vault_id: String,
+    pub(super) storage: Arc<Identity>,
+    pub(super) writer: Arc<SigningKey>,
+    pub(super) recipient: age::x25519::Recipient,
+    pub(super) receipt: Verifier,
+    pub(super) directory: PathBuf,
 }
 /// Recipient owns only its decryption/receipt keys and the broker public verifier.
 pub(super) struct RecipientMaterial {
-    vault_id: String,
-    recipient: Arc<Identity>,
-    receipt: Arc<SigningKey>,
-    writer: Verifier,
+    pub(super) vault_id: String,
+    pub(super) recipient: Arc<Identity>,
+    pub(super) receipt: Arc<SigningKey>,
+    pub(super) writer: Verifier,
+}
+impl BrokerMaterial {
+    pub(super) fn check_recipient_material(
+        &self,
+        recipient: &RecipientMaterial,
+    ) -> Result<(), ErrorCode> {
+        // Empty histories cannot establish enrollment when custody is loaded separately.
+        if self.vault_id != recipient.vault_id
+            || self.recipient != recipient.recipient.recipient()
+            || !self.receipt.same_key(&recipient.receipt.verifier())
+            || !self.writer.verifier().same_key(&recipient.writer)
+        {
+            return Err(ErrorCode::ScopeDenied);
+        }
+        Ok(())
+    }
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1136,7 +1152,7 @@ fn path_components(path: &Path) -> Result<(), ErrorCode> {
     }
     Ok(())
 }
-fn new_directory(path: &Path) -> Result<(), ErrorCode> {
+pub(super) fn new_directory(path: &Path) -> Result<(), ErrorCode> {
     path_components(path)?;
     let parent = path.parent().ok_or(ErrorCode::InvalidRequest)?;
     if !parent.is_dir() {
@@ -1148,7 +1164,7 @@ fn new_directory(path: &Path) -> Result<(), ErrorCode> {
         .map_err(|_| ErrorCode::PersistenceUnavailable)?;
     sync_directory(parent)
 }
-fn safe_directory(path: &Path) -> Result<(), ErrorCode> {
+pub(super) fn safe_directory(path: &Path) -> Result<(), ErrorCode> {
     path_components(path)?;
     let m = fs::symlink_metadata(path).map_err(|_| ErrorCode::PersistenceUnavailable)?;
     if !m.is_dir() || m.mode() & 0o777 != 0o700 || m.uid() != nix::unistd::geteuid().as_raw() {
@@ -1187,13 +1203,13 @@ fn open_existing(path: &Path, append: bool) -> Result<File, ErrorCode> {
     }
     Ok(f)
 }
-fn write_new(path: &Path, bytes: &[u8]) -> Result<(), ErrorCode> {
+pub(super) fn write_new(path: &Path, bytes: &[u8]) -> Result<(), ErrorCode> {
     let mut f = create_file(path)?;
     f.write_all(bytes)
         .map_err(|_| ErrorCode::PersistenceUnavailable)?;
     f.sync_all().map_err(|_| ErrorCode::PersistenceUnavailable)
 }
-fn read_file(path: &Path, limit: usize) -> Result<Vec<u8>, ErrorCode> {
+pub(super) fn read_file(path: &Path, limit: usize) -> Result<Vec<u8>, ErrorCode> {
     let f = open_existing(path, false)?;
     if f.metadata()
         .map_err(|_| ErrorCode::PersistenceUnavailable)?
@@ -1211,7 +1227,7 @@ fn read_file(path: &Path, limit: usize) -> Result<Vec<u8>, ErrorCode> {
     }
     Ok(bytes)
 }
-fn sync_directory(path: &Path) -> Result<(), ErrorCode> {
+pub(super) fn sync_directory(path: &Path) -> Result<(), ErrorCode> {
     File::open(path)
         .and_then(|f| f.sync_all())
         .map_err(|_| ErrorCode::PersistenceUnavailable)
@@ -1619,6 +1635,7 @@ fn validate_payload(
 }
 impl Store {
     pub fn check_recipient(&self, recipient: &Recipient) -> Result<(), ErrorCode> {
+        self.kit.check_recipient_material(&recipient.kit)?;
         let w = self
             .writer
             .lock()
