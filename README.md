@@ -42,7 +42,7 @@ The planned network API uses [vendor-neutral application authentication and exac
 
 ## What is being built
 
-The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. Protected application delivery is an essential additional product requirement, not an optional plaintext-export convenience. Its [design contract](docs/application-delivery.md) specifies reference-only proposals, immutable human approval, recipient enrollment, safe status, revocation limits, and adversarial acceptance gates. None of those delivery interfaces or OS protections are implemented. A useful live provider operation and an operational portable `age` backend also remain release work.
+The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. Protected application delivery is an essential additional product requirement, not an optional plaintext-export convenience. Its [design contract](docs/application-delivery.md) specifies reference-only proposals, immutable human approval, recipient enrollment, safe status, revocation limits, and adversarial acceptance gates. The optional vault feature exercises delivery interfaces using fixed fixtures; production entry, external recipient integration and OS protections remain unimplemented or unverified. A useful live provider operation and an operational portable `age` backend also remain release work.
 
 The synthetic foundation focuses on deterministic policy and request state: prepare, request approval, invoke, and inspect a result. Grant-use reservation and revocation share a broker-owned serialization point. Retrying a request ID must return existing state or explicit uncertainty; it must not silently repeat an unknown external effect.
 
@@ -84,3 +84,9 @@ The original full checkpoint was tested on macOS 26.6.2 arm64 with Rust 1.96.1. 
 Aegis source and documentation are available under the [MIT license](LICENSE). Third-party dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md) and the dependency inventory. Public source availability does not establish a reviewed production release. The [security policy](SECURITY.md) is a draft for this experimental project. Contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md).
 
 The optional vault milestone also has [separate agent/admin protocol handlers](docs/vault-protocol.md) with role-specific runtime key ownership. These are bounded library connection handlers for fixed-canary fixtures; no HTTP listener, real-secret entry or production enrollment is enabled.
+
+## Adapter foundation milestone
+
+Three fixed-fixture modules exercise [operator-entry state](docs/operator-entry-contract.md), [recipient handoff](docs/recipient-adapter-contract.md), and [peer-bound transport framing](docs/vault-transport-contract.md). These are executable adapter contracts, not production implementations. The recipient fixture remains separate from the durable runtime; no live entry, TLS listener, protected custody, external anchor or independently authenticated human interface is enabled. See [ADR 0017](docs/adr/0017-synthetic-adapter-foundations.md) and [source recovery provenance](docs/source-recovery-2026-10-07.md).
+
+Run all three safe report drills with `cargo run --locked --offline --all-features --example adapter_foundations -- /tmp/aegis-adapter-demo-new`. The destination must not already exist; it contains disposable fixture state.

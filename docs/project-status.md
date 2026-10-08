@@ -2,6 +2,12 @@
 
 Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
+## Current adapter checkpoint
+
+The recovered 4979ae3 runtime is the starting point for three independent fixed-fixture adapter increments: metadata-only operator-entry ceremony, immutable recipient handoff/receipt handling, and peer-bound bounded framing over existing protocol handlers. Their tests establish executable contract behavior only. Generic key entry, protected custody, a live authenticated transport, independent human interaction and the operating boundary remain absent. The recipient fixture is not integrated into the durable runtime.
+
+[Source provenance](source-recovery-2026-10-07.md) records the verified archive and the missing original unpublished commit history. The stopped independent review remains incomplete. Current checks are recorded separately below when completed.
+
 ## Implemented
 
 - An optional [integrated synthetic vault-to-recipient path](vault-delivery-spike.md): actual signed actor verification, exact ACLs, proof-gated main-core review/dispatch, encrypted fixed records/capsules, recipient acknowledgement, rotation and durable cold-start/revocation. No generic real-key input, HTTP service, human-presence or isolated-recipient claim.
@@ -40,7 +46,7 @@ The [vendor-neutral access contract](access-control.md) and ADR 0013 define auth
 
 ## Request-driven product flow
 
-[ADR 0014](adr/0014-request-driven-delivery-lifecycle.md) clarifies episodic project setup and secret delivery/rotation as the primary workflow, compatible with waking on request and becoming idle afterward. Recipients may use their providers directly; bounded API mediation is optional. Durable approval/revocation/use state and cold-start/restore enforcement remain unimplemented. Sprites is only an unapproved candidate; this documentation-only update changes no runtime or test result.
+[ADR 0014](adr/0014-request-driven-delivery-lifecycle.md) clarifies episodic project setup and secret delivery/rotation as the primary workflow, compatible with waking on request and becoming idle afterward. Recipients may use their providers directly; bounded API mediation is optional. Durable approval/revocation/use state and cold-start/restore enforcement remain unimplemented. The later private Sprite pilot is approved for bounded synthetic development; it has no production approval. This lifecycle design does not itself change runtime or test results.
 
 ## Readiness decision
 
