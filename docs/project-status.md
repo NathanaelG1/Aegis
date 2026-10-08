@@ -2,7 +2,13 @@
 
 Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
-## Current adapter checkpoint
+## Latest custody checkpoint (8 October 2026)
+
+The separate-role custody path now drives the existing authenticated durable vault/protocol without loading an all-role fixture kit. It exercises exact signed approval, delivery, cold rotation and revoke; the deployment-prerequisite API remains report-only NO-GO. The first use case remains a GitHub App limited to selected personal repositories, with no organization access; see the [operator trial plan](operator-live-trial-plan.md).
+
+Current-source local checks passed 252 library tests, 21 doctests, formatting, Clippy and rustdoc. Full default/all-feature totals are 155/350 passes plus the same 14 listener failures. Separate-process custody create/inspect passed. No external-host verification or live provider activation was performed for this increment. The [verification record](verification.md#separated-custody-and-report-only-deployment-checkpoint-2026-10-08) separates these results from the older pilot pass. Real-key entry remains unavailable.
+
+## Previous adapter checkpoint (7 October 2026)
 
 The recovered 4979ae3 runtime is the starting point for three independent fixed-fixture adapter increments: metadata-only operator-entry ceremony, immutable recipient handoff/receipt handling, and peer-bound bounded framing over existing protocol handlers. Their tests establish executable contract behavior only. Generic key entry, protected custody, a live authenticated transport, independent human interaction and the operating boundary remain absent. The recipient fixture is not integrated into the durable runtime.
 
