@@ -90,3 +90,14 @@ The optional vault milestone also has [separate agent/admin protocol handlers](d
 Three fixed-fixture modules exercise [operator-entry state](docs/operator-entry-contract.md), [recipient handoff](docs/recipient-adapter-contract.md), and [peer-bound transport framing](docs/vault-transport-contract.md). These are executable adapter contracts, not production implementations. The recipient fixture remains separate from the durable runtime; no live entry, TLS listener, protected custody, external anchor or independently authenticated human interface is enabled. See [ADR 0017](docs/adr/0017-synthetic-adapter-foundations.md) and [source recovery provenance](docs/source-recovery-2026-10-07.md).
 
 Run all three safe report drills with `cargo run --locked --offline --all-features --example adapter_foundations -- /tmp/aegis-adapter-demo-new`. The destination must not already exist; it contains disposable fixture state.
+
+## Operator-controlled trial work
+
+The next fixed-fixture milestone loads broker, recipient, agent and administrator
+material from separate role documents and uses the existing durable protocol.
+The report-only deployment prerequisites remain NO-GO and do not inspect a host
+or issue authority. See [separate custody](docs/custody-spike.md),
+[deployment prerequisites](docs/deployment-admission.md) and the
+[operator-controlled GitHub App trial plan](docs/operator-live-trial-plan.md).
+The first use case remains selected personal repositories, with no organization
+access. Real key entry and live GitHub calls remain disabled.

@@ -14,6 +14,8 @@
 //! ```
 mod auth;
 mod crypto;
+pub mod custody;
+pub mod deployment;
 pub mod entry;
 mod model;
 pub mod protocol;

@@ -35,6 +35,16 @@ and its evidence exist; do not replace it with a caller-supplied readiness flag.
 
 ## 2. Recommended first target and trust boundary
 
+The established first use case is a GitHub App owned by NathanaelG1 and installed
+only on selected personal repositories. Organization installations/access are
+out of scope. Keep the App private key in protected broker/sign-only custody;
+the first enrolled GitHub recipient should receive only a narrowed installation
+token for one exact personal repository and a fixed metadata-read operation. No
+App private key, JWT or installation token is an agent-visible result. The
+existing [GitHub contract](github-app.md) supplies the frozen App/installation,
+numeric account/owner, selected repository, signer version and permission
+bindings; those facts still need authenticated operational enrollment.
+
 Use one explicitly approved, operator-owned **Linux x86_64 host or VM**, with a
 named OS/kernel/filesystem and supported local IPC. Keep the agent on another
 machine with only an authenticated, ACL-bounded application endpoint. Use one
@@ -109,8 +119,10 @@ The operator owns these actions; writing code or approving synthetic development
 does not authorize them. Bundle requests once exact targets and consequences
 are known, using the [existing ceremony](operator-owned-deployment.md).
 
-1. **Select the boundary.** Name the host/account, OS/filesystem, costs, recipient,
-   custody backend, independent human client and anchor/recovery location. Verify
+1. **Select the boundary.** Name the host/account, OS/filesystem, costs, fixed GitHub recipient build,
+   custody backend, independent human client and anchor/recovery location.
+   Keep the established selected-personal-repository GitHub App use case;
+   resolve its exact App/installation/repository IDs during operator enrollment. Verify
    that provider controls can enforce the proposed separation before purchasing
    or changing anything. No provider is selected by this document.
 2. **Approve a canary-only installation.** Approve the precise host identities,
@@ -180,13 +192,20 @@ require fresh evidence, not a carried-forward pass.
 
 ## 6. Minimal first live use, only after all gates
 
-Proposed scope: one operator-approved disposable, least-privilege **read-only**
-credential for one non-production account/resource, one enrolled fixed recipient
-and one protected slot. One independently approved delivery attempt; no bulk
+First-use scope: the approved personal-account GitHub App, one explicitly
+selected personal repository, one enrolled fixed GitHub recipient and one
+protected slot for a short-lived installation token. The request must name that
+exact repository ID and only `metadata: read`; no organization, all-repository,
+Contents, workflow, administration or user-token access belongs in this trial.
+The operator provisions the App key directly into verified sign-only custody;
+the recipient does not receive that root App key. One independently approved delivery attempt; no bulk
 import, unattended renewal, generic execution or mutable plugin configuration.
 The recipient performs one fixed harmless read and returns a closed status.
-Provider identity, credential type, exact resource, enforced expiry and cleanup
-steps must be resolved before approval; there is no provider call authorized now.
+The App/client/installation IDs, numeric personal-account identity, selected
+repository ID, protected signer version, provider-enforced token expiry and
+revocation/cleanup steps must be verified before approval. The user plans to
+create the App; no App key has been entered and no live grant has been verified.
+There is no provider call, App/key/token creation or enrollment authorized now.
 
 A broker delivery count limits handoffs, not later calls made with delivered
 plaintext. If downstream one-use behavior is claimed, enforce and test it in the
@@ -225,3 +244,13 @@ measured operator-owned deployment, independent assurance and exact approval.
 Neither removing admin access alone nor healthy unit tests establishes either
 condition. The current decision is **continue authorized synthetic engineering;
 do not request or enter live secrets**.
+
+## 8. Subsequent fixed-fixture implementation
+
+The [separated custody increment](custody-spike.md) adds independent role-document
+loaders to the real synthetic vault/protocol composition without loading an
+all-role key kit at runtime. The [deployment prerequisite model](deployment-admission.md)
+adds bounded report-only evidence handling; actual host observations and
+production admission remain unsupported. These increments advance C1/C2
+interfaces but do not complete their operational requirements or enable any
+live secret. Their exact-source test evidence belongs in the verification record.
