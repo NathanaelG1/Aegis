@@ -269,3 +269,17 @@ Corrected immutable commit `c9f982f50c0cceed479af9bc3efd88c19fac2081` passed the
 The following [ADR 0016](adr/0016-separated-vault-protocol-roles.md) increment separates runtime key ownership and adds typed agent/admin connection handlers. Its new in-process protocol tests exercise serialized delivery/rotation/revoke, fresh cold authentication, role/review/epoch substitution denial, closed parser/output bounds, expired admin session inside the approval hook, signer ownership, empty ACL, duplicate in-flight invocation and retained uncertainty. Current-source final command evidence is recorded after the new candidate is frozen; earlier immutable passes do not validate later code automatically.
 
 Local protocol-increment checks passed all 13 new protocol tests and all 177 all-feature library tests (61 vault tests in total). Default all-target results were 155 passed plus the same 14 listener failures; all-feature results were 275 passed plus those same 14 failures, with zero ignored tests. Formatting, all-feature/all-target Clippy, rustdoc with warnings denied and eight visibility doctests passed. The exact failed listener names match the earlier cloud checkpoint. Clean-build and immutable pilot validation are recorded separately when completed.
+
+## Recovered adapter foundation checkpoint (2026-10-07)
+
+Tested runtime `ce287cda3fdfff4a18a62ddb27fe5d40cb0ae308` integrates three separately developed fixed-fixture modules. [Source recovery](source-recovery-2026-10-07.md) records how runtime `4979ae3` was recovered; the original unpublished history and documentation-only `0a0efe1` were not recovered.
+
+Environment: Linux x86_64, Rust/Cargo 1.96.1. Cargo.toml and Cargo.lock are unchanged from the recovered runtime. Archive SHA-256: `146d4ee9ca649c73d09e40deef8e474045b1193a3651eb29181dedec6c2513cf`.
+
+- All 225 all-feature library tests passed, including 48 new tests (entry 21, recipient 15, transport 12).
+- Full default/all-feature all-target runs with `--no-fail-fast` produced 155/323 passes respectively, each with 14 failures and zero ignored tests. The failed test names exactly match the 14 listener tests in a fresh baseline run. Socket binding remains restricted on this workspace, so neither full aggregate nor `scripts/check.sh` is a local pass.
+- All 16 visibility/API doctests passed. Formatting, all-feature/all-target Clippy and rustdoc with warnings denied passed.
+- The `adapter_foundations` example executed all three reports. It observed one metadata-only entry reservation, two dummy recipient generations and one authenticated framed canary delivery/revocation. Production entry remains `unsupported_deployment`; independent peer authentication, confidentiality, human presence, protected recipient and real-key readiness remain false.
+- Validation logs/reports contain neither of the two fixed canary values nor private-key block markers. A known-credential-marker/filename check of reachable Git blobs found no matches. These are limited output/publication checks, not a secrecy proof or independent security review.
+
+The external Linux pilot has not yet tested this candidate. Its older successful runs do not validate these changes. The stopped independent review remains incomplete and has not been resumed or replaced. The new recipient fixture has no durable state and is not wired into the existing durable runtime; operator entry receipts and channel bindings are simulated. Production adapters, operator-owned isolation, external anchor/custody and final assurance remain open.
