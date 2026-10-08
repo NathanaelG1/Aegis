@@ -6,7 +6,7 @@ Aegis is an experimental synthetic-only capability broker. Source and documentat
 
 The recovered 4979ae3 runtime is the starting point for three independent fixed-fixture adapter increments: metadata-only operator-entry ceremony, immutable recipient handoff/receipt handling, and peer-bound bounded framing over existing protocol handlers. Their tests establish executable contract behavior only. Generic key entry, protected custody, a live authenticated transport, independent human interaction and the operating boundary remain absent. The recipient fixture is not integrated into the durable runtime.
 
-[Source provenance](source-recovery-2026-10-07.md) records the verified archive and the missing original unpublished commit history. The stopped independent review remains incomplete. The integrated runtime passes all 225 all-feature library tests, 16 doctests, formatting, Clippy and rustdoc. Full local aggregates retain the same 14 listener failures; current external pilot verification is pending. See [verification](verification.md#recovered-adapter-foundation-checkpoint-2026-10-07).
+[Source provenance](source-recovery-2026-10-07.md) records the verified archive and the missing original unpublished commit history. The stopped independent review remains incomplete. The integrated runtime passes all 225 all-feature library tests, 16 doctests, formatting, Clippy and rustdoc. Full local aggregates retain the same 14 listener failures. The immutable-source Linux pilot passed all 169 default and 337 all-feature tests, all 21 Unix cases in both configurations, 16 doctests, the quality checks, the adapter drill and separate-process inspection. See [verification](verification.md#recovered-adapter-foundation-checkpoint-2026-10-07).
 
 ## Implemented
 
