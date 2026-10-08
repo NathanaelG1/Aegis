@@ -69,7 +69,7 @@ fn malformed_frames_never_echo_input() {
 fn version_and_integer_contracts_fail_closed() {
     let (_, client, _) = fixture();
     let mut version = prepare();
-    version["version"] = json!(2);
+    version["version"] = json!(3);
     assert_eq!(
         protocol::handle(&client, &serde_json::to_vec(&version).unwrap()).error,
         Some(ErrorCode::UnsupportedVersion)

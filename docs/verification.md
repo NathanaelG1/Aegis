@@ -1,10 +1,12 @@
 # Verification and evidence
 
-**Checkpoint:** 2026-10-06. The tested scope is a synthetic in-memory broker/fake provider, separate Unix foreground and MCP subprocesses, and an optional fixed-fixture age recovery experiment. Passing these tests establishes only their exercised behavior on the recorded build; it does not establish production readiness, real credential custody, genuine human presence, or OS containment.
+**Original Mac checkpoint:** 2026-10-06. The tested scope is a synthetic in-memory broker/fake provider, separate Unix foreground and MCP subprocesses, and an optional fixed-fixture age recovery experiment. Passing these tests establishes only their exercised behavior on the recorded build; it does not establish production readiness, real credential custody, genuine human presence, or OS containment.
 
 Protected agent-blind application delivery is required but not yet implemented or verified. Its [contract](application-delivery.md) and [ADR](adr/0007-protected-application-delivery.md) are documentation-only additions. They add no Rust code or tests; the recorded 85/99 counts cover the existing synthetic implementation, not delivery enforcement. No protected file installation, descriptor/store handoff, application enrollment, independently authenticated human control or OS confinement gate has been exercised.
 
-## Environment
+The later [Linux GitHub preparation checkpoint](#linux-github-preparation-checkpoint-2026-10-06) below records this increment separately; the original Mac success does not cover it.
+
+## Original Mac environment
 
 | Item | Initial evidence / limit |
 | --- | --- |
@@ -101,10 +103,169 @@ The embedding process may contain both trusted control and agent handles. The fo
 
 Linux separate service identities/systemd credentials, macOS protected identities or confined-agent/hardened-recipient authenticated IPC, and Windows service identities/DACLs/AppContainer are delivery proposals only. None is a tested Aegis configuration. Mode `0600`, current-UID peer checks, a signed executable, container naming or redaction cannot substitute for demonstrated denial of agent reads and control. Recipient plaintext cannot be retracted by revoking a broker grant, and delivery-use counters cannot count later provider calls without separate enforcement.
 
-Current source implements terminal inspection before exact approval, current-UID checks on both Unix peers, a new `0700` directory with no overwrite/symlink components, eight-connection and I/O bounds, and random broker-epoch continuity. Linux peer code is untested. These source properties do not establish genuine human presence, hostile same-account containment, atomic path traversal, or universal filesystem support.
+Current source implements terminal inspection before exact approval, current-UID checks on both Unix peers, a new `0700` directory with no overwrite/symlink components, eight-connection and I/O bounds, and random broker-epoch continuity. The original checkpoint did not test Linux peer code. The later Linux run passed the same-UID socket-pair check but could not bind listener sockets, as recorded below. These source properties do not establish genuine human presence, hostile same-account containment, atomic path traversal, or universal filesystem support.
 
-The complete quality-script run supplies combined evidence; earlier individual/default runs were superseded by that successful check. Re-run the script when source or dependency changes require it, and record the named platform and tested feature combinations.
+The original Mac complete quality-script run supplied combined evidence for that earlier source checkpoint; its earlier individual/default runs were superseded by that successful check. It does not supersede the later Linux results or cover the new GitHub code. Re-run the script when source or dependency changes require it, and record the named platform and tested feature combinations.
 
 Synthetic fixture canary checks cover the captured paths, not every possible panic, allocator, crash report, telemetry integration, debugger, or compromised host. No real secrets are needed to expose API leak paths. Do not substitute operational credentials for adversarial fixtures.
 
 Focused independent correctness review and remediation are recorded in [review-checkpoint.md](review-checkpoint.md). Comprehensive security review remains outstanding. Record reviewed versions, limitations, and remediation rather than converting a demo transcript into an audit claim.
+
+## Linux GitHub preparation checkpoint (2026-10-06)
+
+Scope: [ADR 0008](adr/0008-github-app-synthetic-preparation.md), the private fixed-fixture GitHub adapter, its example and updated contracts. The existing broker/MCP operation remains unchanged. This is a synthetic code checkpoint, not a supported isolated deployment, real-key installation or live GitHub connection.
+
+Environment: Debian GNU/Linux 13.6 (trixie), Linux 6.18.44, x86_64, overlay filesystem, dot cloud workspace. Rust 1.96.1 (`31fca3adb`, LLVM 22.1.2) and Cargo 1.96.1 were installed from the official Rust distribution into workspace-local tooling with no OS/profile/security changes. Locked crates were fetched from the normal registry before offline verification. `Cargo.toml` and `Cargo.lock` are unchanged; lockfile SHA-256 is `bab93163c4d4b3bd78a8bc78d7328b2523360c1646d76d5cac385c2a8e178f98`. The existing dependency inventory remains the historical Mac target inventory, not a Linux dependency audit.
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all -- --check` | Passed |
+| `cargo test --locked --offline --lib` | All 31 new GitHub tests passed |
+| `cargo test --locked --offline --all-targets --no-fail-fast` | 102 passed, 14 existing interface tests failed because Unix listener binding returned `EPERM`; aggregate exit 101 |
+| `cargo test --locked --offline --all-features --all-targets --no-fail-fast` | 116 passed, same 14 interface failures; aggregate exit 101 |
+| Existing non-interface suites | All 37 policy, 12 protocol/MCP, 6 framing/parser, 9 lifecycle/approval and 14 optional storage tests passed |
+| Existing interface suite | 7 passed, including kernel same-UID socket-pair authentication; 14 could not complete in this context because listener bind was denied |
+| `cargo clippy --locked --offline --all-features --all-targets -- -D warnings` | Passed |
+| `RUSTDOCFLAGS='-D warnings' cargo doc --locked --offline --all-features --no-deps` | Passed |
+| `cargo test --locked --offline --all-features --doc` | One compile-fail API visibility test passed |
+| Existing `demo` and new `--example github_app_spike` | Passed; new report showed two exchanges, two metadata requests, duplicate reuse, confirmed mock revocation, later denial and live availability false |
+| Clean source copy, empty target directory | Offline all-feature/all-target build, 31 GitHub unit tests and synthetic GitHub example passed; no existing target artifacts reused |
+| Independent focused re-review | Four lifecycle/clock findings fixed; reviewer reran all 31 GitHub tests successfully with no remaining blocking finding in this synthetic scope |
+
+`sh scripts/check.sh` stops at the existing default-feature interface failure, so **the aggregate quality script did not pass in this Linux environment**. A supported elevated execution attempt returned the same `EPERM`; no permission changes or workarounds bypassed that restriction. Remaining checks were run explicitly as listed. This verifies portable synthetic logic and selected Linux tests, not the full Linux foreground transport. The new code has not been run on macOS or Windows.
+
+The adversarial GitHub suite covers owner/type/selection/permission denial before calls, exact signer/installation/binding/epoch scope, explicit metadata-only narrowing, route injection rejection, byte-bounded hostile output, token shape/scope/expiry, duplicate/conflicting IDs, bounded state, single-flight/revoke races, cached use/refresh, unknown mint/read/revocation receipts, overlapping-token bookkeeping, sequential-clock regression, stalled-wall-clock expiry, and panic-safe receipt retention. Unknown receipt replay remains available as a closed error even when the fixture's clock/session later invalidates; this creates no new effect or data release.
+
+The focused review is not a security audit. In-memory mocks do not establish authenticated human authority, protected key custody, valid cryptographic signing, live HTTP enforcement, durable mint/revocation recovery or agent-blind Git/application delivery. Those gates remain open in [the integration plan](github-app.md#milestones).
+
+## Linux synthetic intent-journal checkpoint (2026-10-06)
+
+This subsequent source increment adds [ADR 0009](adr/0009-synthetic-durable-github-intents.md) and the [synthetic journal](github-intent-journal.md). The environment/toolchain/lockfile match the Linux checkpoint above; no dependencies or security settings changed. The earlier 31-test GitHub record is historical for the adapter-only commit.
+
+| Check | Result |
+| --- | --- |
+| Focused `cargo test --locked --offline --lib` | All 56 GitHub tests passed: original 31 plus 25 journal/parser/runtime/fault tests (including the subprocess worker) |
+| Default all-target, no-fail-fast | 127 passed, 14 existing listener-dependent interface tests failed with `EPERM`; exit 101 |
+| All-feature/all-target, no-fail-fast | 141 passed, same 14 interface failures; exit 101 |
+| Format, all-feature/all-target Clippy with warnings denied | Passed |
+| All-feature rustdoc with warnings denied and visibility doctest | Passed; one doctest |
+| Existing synthetic demo and GitHub adapter example | Passed |
+| Journal create then inspect in separate processes | Passed; one consumed reservation, confirmed mock revocation, zero restored grants/sessions and no retry allowed |
+| Clean source copy and empty target directory | All-feature/all-target offline build, 56 unit tests, and separate journal create/inspect processes passed |
+| Independent focused review | Reviewer reran all 56 tests; four reported failure-reporting/parsing/replay issues fixed with regressions; no remaining blocker in the stated synthetic scope |
+
+The added tests exercise 36 injected write/sync boundary combinations and nine actual subprocess exit points before/after minting, reading and revocation. They also cover exact persisted bindings, duplicate IDs, strict event transitions, unknown/duplicate fields, malformed/partial input, bounded decoding, cached/overlapping mint references, unknown outcomes with clock regression, single-flight/revoke ordering and cooperative file locks. A parallel process-launch test exposed a temporary inherited-file-description lock lifetime; explicit owner unlock and a dedicated regression cover it.
+
+The aggregate quality script still cannot pass on this host because Unix listener binding remains denied. No tests were disabled or converted to skips. The journal itself uses ordinary local files and file locks, which worked in this context. Actual power loss, hostile same-UID/namespace modification, writer authenticity, rollback protection, operational key custody and macOS/Windows execution remain unverified or unimplemented. The public recovery path only inspects fixed synthetic evidence and restores no authority.
+
+## Linux versioned core-integration checkpoint (2026-10-06)
+
+This increment adds [ADR 0010](adr/0010-versioned-synthetic-github-broker.md), the [versioned core operation](github-broker.md), schema-2 broker context and explicit V2 protocol/MCP wiring. It uses the same Debian/Linux x86_64 workspace, Rust/Cargo 1.96.1 and unchanged manifest/lockfile recorded above.
+
+| Check | Result |
+| --- | --- |
+| Library tests | 71 passed: prior 56 plus 15 core GitHub policy/integration regressions |
+| New GitHub/V2 protocol integration suite | 9 passed |
+| Existing policy/protocol/review/framing suites | All 64 passed |
+| Default all-target aggregate, no-fail-fast | 151 passed, 14 existing Unix-listener interface failures with `EPERM`; exit 101 |
+| All-feature/all-target aggregate, no-fail-fast | 165 passed, same 14 interface failures; includes all 14 optional storage tests |
+| Format, all-target/all-feature Clippy with warnings denied | Passed |
+| All-feature rustdoc with warnings denied and visibility doctest | Passed; one doctest |
+| Clean source copy, empty target directory | All-feature/all-target build, library/V2/legacy focused suites and broker/schema-1 examples passed |
+| Independent focused review | Confirmed operation-ID and unknown-receipt corrections; reviewed final code/docs and passing changed/legacy suites. Minor legacy error-precedence cleanup was regression-tested too |
+
+The new regressions cover V1 rejection of GitHub handles before mutation, unavailable unchecked/bounded approval, exact review across IDs/principals/instances/limits, stale bindings, cross-operation/result substitution, consumed budgets after persistence failure, one-shot execution, last-use/revoke ordering, static unknown receipts after invalidation, actual reviewed versus consumed budgets, schema-1 compatibility, schema-2 context tampering/mixed versions, duplicate fields and V2 JSON/MCP framing. V1's unsupported-version test now uses version 3 because version 2 is explicitly supported; no test was disabled.
+
+The new foreground and `mcp-v2` socket commands compile, and their headless refusal is subprocess-tested. They have not completed an end-to-end Unix listener workflow here. The existing 14 listener-dependent tests remain unsuccessful, so neither the aggregate quality script nor full foreground compatibility is claimed. The unchanged default issue-status behavior is evidenced by the runnable legacy suites, not by treating blocked IPC tests as passed.
+
+Schema 2 records declared core idle limits but has insufficient timing history to independently validate every historic idle decision. All stored authority context remains synthetic, unauthenticated metadata under the trusted-storage assumption. Core policy integration does not establish human presence, protected key custody, live transport, rollback protection or OS isolation, and live readiness remains false.
+
+## Linux optional signing checkpoint (2026-10-06)
+
+[ADR 0011](adr/0011-optional-disposable-signing-source.md) adds a separate opt-in disposable-key experiment. This checkpoint uses the same Debian 13.6/Linux x86_64 workspace and Rust/Cargo 1.96.1; existing GCC 14.2.0 builds non-FIPS AWS-LC, with no CMake executable or OS tooling installation. The default and storage-only dependency graphs retain their prior versions/features. See [the signing contract](signing-spike.md) and [Linux dependency inventory](dependency-inventory-linux-signing.json) for pins, maintenance, native-build, size and memory limitations.
+
+| Check | Result |
+| --- | --- |
+| Focused optional signing tests | 23 passed; disposable in-memory RSA keys only |
+| Default all-target aggregate, no-fail-fast | 151 passed, unchanged 14 listener-dependent interface failures; exit 101 |
+| Signing-only all-target aggregate, no-fail-fast | 174 passed, same 14 interface failures; exit 101 |
+| All-feature/all-target aggregate, no-fail-fast | 188 passed, same 14 interface failures; includes 94 library tests and 14 storage tests |
+| Format and all-target/all-feature Clippy with warnings denied | Passed |
+| All-feature rustdoc with warnings denied, compile-fail visibility doctests | Passed; two doctests |
+| No-input signing example | Passed: one verified signature, lock/stale/revoke denials, existing JWT still valid, protected storage unavailable, live readiness false |
+| Clean source copy and empty target directory | All-feature/all-target build, 181 non-listener tests and no-input signing example passed |
+| Independent focused review | 23 signing tests, both doctests, inventory and artifact/documentation consistency independently checked; no blocking findings after two lifecycle-cleanup improvements |
+
+The new tests cover exact key/version/issuer/algorithm references, generated RSA signatures, signature corruption and wrong keys, HS/RSA type confusion, bounded canonical compact shapes, duplicate/unknown/wrong-type header and claims, zero-leeway expiry, future `iat`, maximum claim interval, arithmetic failure, 30/600-second lease boundaries, sticky UTC/elapsed regression, final signing-use concurrency, deterministic sign/lock ordering, rotation, revoke versus already issued JWTs, owner drop, generation exhaustion, concurrent demos and preinitialized process-global provider refusal in a fresh process. A visibility doctest ensures private key sources are not exported; it is not an isolation proof.
+
+The aggregate quality script still stops at the unchanged Unix listener failures. Tests were not disabled. macOS/Windows compilation, FFI/unsafe review, full advisory/license review and end-to-end live composition remain unverified. No key file, OS security configuration, real credential, service authentication or network provider is involved. The existing broker still uses synthetic mock signing even when this feature is compiled.
+
+## Linux approval-bound signing checkpoint (2026-10-06)
+
+[ADR 0012](adr/0012-approval-bound-synthetic-signing.md) connects the optional signer to an explicit reviewed synthetic broker constructor. No dependency or lockfile change is made; all four Linux inventories still match. The environment remains Debian/Linux x86_64 with Rust/Cargo 1.96.1 and the existing native compiler. No OS security changes, credentials or live transport are involved.
+
+| Check | Result |
+| --- | --- |
+| All-feature library tests | 116 passed: prior 94 plus 22 composition/source/timing/crash tests |
+| Default all-target aggregate, no-fail-fast | 151 passed, same 14 listener-dependent `EPERM` failures; exit 101 |
+| Signing-only all-target aggregate, no-fail-fast | 196 passed, same 14 failures; exit 101 |
+| All-feature/all-target aggregate, no-fail-fast | 210 passed, same 14 failures; exit 101 |
+| Format, all-target/all-feature Clippy, rustdoc with warnings denied | Passed |
+| Compile-fail visibility doctests | Five passed, including separate source/permit/envelope non-export assertions |
+| Signed broker example | Passed: approved safe result, unchanged replay, confirmed mock revocation and zero restored authority after journal inspection |
+| Clean source copy and empty target directory | All-feature/all-target build, 203 non-listener tests and signed broker example passed |
+| Independent focused review | 116 library tests and five doctests independently passed; final contracts and readiness checklist reviewed with no remaining blockers |
+
+The 22 new tests exercise full source/review/permit/envelope binding, key/profile/owner/scope substitution, actual versus reviewed budget, stale/unapproved/expired requests, cached use without fresh source authority, duplicate/revoke races, 18 reservation/mint/receipt/read/terminal write/sync failures, known lease failures, pre/post-sign panics and two actual process exits, provider-initialization failure/header-only residue, exact source clock sampling, sticky regression/reservation floor, delayed signing, and current-time expiry/rollback after mint-intent sync. No real key, JWT byte export or live request is tested or enabled.
+
+A focused review identified an extra pre-sign clock observation that was not latched into source state. Signing now takes one checked sample under the source mutex, verifies the reservation floor before crypto and returns its exact stamp. A separate adapter-owned observation after durable mint intent establishes current exchange time. The tests distinguish that current time from issuance time and retain known pre-provider denial without inventing an unresolved effect. Default/mock lifecycle, panic and journal tests remain in the regression run.
+
+The aggregate quality script still cannot pass because the 14 existing listener tests remain denied. Tests were not skipped. This composed library example does not verify foreground IPC, a real agent/human host, live GitHub behavior, production clock/TTL semantics, protected custody or OS isolation. The [readiness checklist](readiness-checklist.md) consolidates the minimum missing components and required deployment decisions; implementation pauses at that checkpoint.
+
+The first clean-build attempt exhausted the temporary filesystem because earlier disposable build directories occupied it. Only generated build outputs were removed; a fresh source copy and empty build directory on the workspace filesystem then passed. This was an environment-capacity failure, not a hidden test skip or OS permission change. The final optimized, unstripped signed-broker example measured 4,462,560 bytes on this host; this is a local artifact observation, not a portable size promise.
+
+## Vendor-neutral access-contract checkpoint (2026-10-07)
+
+[ADR 0013](adr/0013-vendor-neutral-authentication-and-acl.md) and the [access-control contract](access-control.md) define the future authenticated API/ACL boundary without changing runtime source or dependencies. Four new tests in `tests/access_contract.rs` run against the existing typed V1/V2 protocol, MCP adapter and broker policy. They reject claimed principal/IP/network/proxy/ACL authority before mutation, show accepted MCP display/capability metadata cannot change the host-bound principal or approve, and require exact reviewed principal/credential/resource/context with revocation.
+
+| Check | Result |
+| --- | --- |
+| New access-contract suite | Four passed |
+| Fresh empty target directory | The four-test default-feature suite compiled and passed independently of the existing build cache |
+| Independent read-only review | Four tests rerun successfully; architecture/test scope, proxy trust, credential separation and standards references reviewed with no blocking findings |
+| Default all-target aggregate, no-fail-fast | 155 passed; unchanged 14 listener-dependent `EPERM` failures; exit 101 |
+| All-feature/all-target aggregate, no-fail-fast | 214 passed; same 14 failures; exit 101 |
+| Format, all-target/all-feature Clippy and all-feature rustdoc with warnings denied | Passed |
+| Existing visibility doctests | Five passed |
+
+These tests do not exercise HTTP headers, a real authenticator, configured ACL loading/evaluation, remote bootstrap/admin, reverse proxies, a private network or public-exposure prevention. Those remain explicit future cases in the acceptance matrix. The current trusted constructor still creates one synthetic grant/principal/session. No runtime behavior, credential, networking configuration, dependency or live gate changed. The full quality script remains unsuccessful on this host because of the known listener restriction; no test was disabled or treated as passed.
+
+## Private Sprite baseline checkpoint (2026-10-07)
+
+A separately operated, budget-approved private synthetic pilot tested immutable source `e353a6bde14418a7591c79da91cba97014a14e07` on Linux x86_64 with Rust/Cargo 1.96.1. Its source archive SHA-256 was `666f00875168d83c12b1231e3b339b05cb5f839d0f698dee47dc9dc235b01602`. The operator's saved quality-script log records **169 default tests and 228 all-feature tests passed**, including all 21 Unix interface tests in both configurations. Formatting, all-feature/all-target Clippy and rustdoc with warnings denied, plus five visibility doctests, passed.
+
+A bounded external smoke also exercised the actual synthetic GitHub foreground command and MCP v2: approval-required denial, forged-approval denial, canonical review, safe result/replay, mock provider revocation and endpoint cleanup passed. This supersedes the earlier host's listener restriction only for that tested pilot/source. The dot development workspace still denies the same 14 listener tests; no sandbox was bypassed or reconfigured.
+
+Negative-boundary tests remain decisive: same-UID software could read a mode-0600 synthetic recovery kit/decrypt its fixture, and could automate ordinary terminal inspection/approval without the test-pipe flag. These are expected limits, not new security promises. Agent administrative/exec/filesystem/restore access to the pilot remains unsuitable for real keys. No HTTP, protected human presence, real application delivery or OS-isolation claim follows from the baseline pass.
+
+## Integrated synthetic vault candidate (2026-10-07)
+
+[ADR 0015](adr/0015-integrated-synthetic-vault-delivery.md) adds the optional main-core canary delivery path. Initial focused validation passes 41 tests covering actual assertion signatures, role/context/expiry/replay denial, opaque client-handle binding, exact/empty ACLs, bare-control approval denial, encrypted delivery/rotation, durable use/revocation, malformed or changed state, in-flight behavior and recipient uncertainty. Eleven actual subprocess exits cover approval, reservation, handoff, completion and revocation; fault matrices exercise failed writes/syncs/anchor updates and recipient acknowledgements. Three added visibility doctests keep the new private principal/host/plaintext types outside the public API.
+
+The code still reports human presence, protected deployment/anchor and real-key readiness as false. A separate fixture kit is not protection against a same-UID/administrator attacker or coherent rollback of all state. Active-writer integrity checks detect tested file changes before another append but are not an atomic namespace-confinement proof. Independent review and immutable pilot verification of this new increment are tracked separately from the earlier Sprite baseline.
+
+Initial local candidate checks: 155 default and 255 all-feature tests passed, each with the unchanged 14 listener failures in the dot workspace. All-feature library total is 157 (116 earlier + 41 vault tests). Formatting, all-target/all-feature Clippy, rustdoc with warnings denied, eight visibility doctests, a fresh empty-target run of all 41 vault tests, and separate example create/inspect processes passed. Dependency metadata matches all four previous package/version/feature inventories; `vault-spike` only combines existing optional features. This is the pre-review local checkpoint, not independent approval or pilot verification of the new code.
+
+Immutable candidate `99c7074f28b268caff2b93e933cf01ca8a78445c` subsequently passed the private Linux pilot's 169 default and 269 all-feature tests, all 41 focused vault tests, eight doctests, formatting, Clippy, rustdoc, the GitHub foreground/MCP regression and separate-process vault create/inspect. Those passes did not clear the candidate: independent local reproductions found inconsistent recipient inspection, acknowledgement after damage to an open recipient file, and restoration of a use after a reservation failed before its first journal write. The reviewer completed the focused suite and reproductions but stopped before a final independent review conclusion; that review is incomplete.
+
+Corrective regression coverage now requires exact journal/recipient agreement, active recipient file/history revalidation, and a durable pre-transition guard for reservation and revocation. Guards preserve fail-closed cold-start behavior even when a subsequent journal write fails before any bytes are written. The same repair covers failed revocation persistence. Focused checks and later immutable-source validation are recorded against the corrected commit separately; the earlier pilot pass is not evidence for untested changes.
+
+The correction's local checks passed 48 focused vault tests (seven added cases), all 164 all-feature library tests, eight doctests, formatting, all-feature/all-target Clippy and rustdoc with warnings denied. New cases also retain an unknown receipt's exact authenticated-capability requirement and preserve the result/revocation ordering when an already-reserved delivery is paused. Independent final review remains incomplete; these are developer regression results.
+
+## Corrected vault and separated protocol checkpoint (2026-10-07)
+
+Corrected immutable commit `c9f982f50c0cceed479af9bc3efd88c19fac2081` passed the private Linux pilot's seven corrective regression cases, all 48 vault tests, 169 default tests, 276 all-feature tests, eight doctests, formatting, Clippy and rustdoc. Separate-process vault inspection, GitHub foreground/MCP regression and actual pilot cold-wake inspection passed. Source files matched the immutable archive. These are ordinary platform/regression results; the stopped independent security review remains incomplete.
+
+The following [ADR 0016](adr/0016-separated-vault-protocol-roles.md) increment separates runtime key ownership and adds typed agent/admin connection handlers. Its new in-process protocol tests exercise serialized delivery/rotation/revoke, fresh cold authentication, role/review/epoch substitution denial, closed parser/output bounds, expired admin session inside the approval hook, signer ownership, empty ACL, duplicate in-flight invocation and retained uncertainty. Current-source final command evidence is recorded after the new candidate is frozen; earlier immutable passes do not validate later code automatically.
+
+Local protocol-increment checks passed all 13 new protocol tests and all 177 all-feature library tests (61 vault tests in total). Default all-target results were 155 passed plus the same 14 listener failures; all-feature results were 275 passed plus those same 14 failures, with zero ignored tests. Formatting, all-feature/all-target Clippy, rustdoc with warnings denied and eight visibility doctests passed. The exact failed listener names match the earlier cloud checkpoint. Clean-build and immutable pilot validation are recorded separately when completed.

@@ -117,27 +117,42 @@ fn rpc_result(id: Value, result: Value) -> Value {
 fn handle_schema() -> Value {
     json!({"type":"object","properties":{"prepared_request_id":{"type":"integer","minimum":1}},"required":["prepared_request_id"],"additionalProperties":false})
 }
-fn tools() -> Value {
+fn tools(version: u32) -> Value {
     let empty = json!({"type":"object","properties":{},"additionalProperties":false});
-    json!({"tools":[
+    let mut result = json!({"tools":[
         {"name":"discover_operations","description":"Unverified synthetic catalog; no approval assertion.","inputSchema":empty},
         {"name":"prepare_operation","description":"Resolve a bounded synthetic issue-status request.","inputSchema":{"type":"object","properties":{"request_id":{"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9_-]+$"},"profile_id":{"type":"string","enum":["issue-status"]},"parameters":{"type":"object","properties":{"repository_id":{"type":"integer","minimum":1},"issue_number":{"type":"integer","minimum":1}},"required":["repository_id","issue_number"],"additionalProperties":false}},"required":["request_id","profile_id","parameters"],"additionalProperties":false}},
         {"name":"request_approval","description":"Queue a private decision. This never grants authority.","inputSchema":handle_schema()},
         {"name":"invoke_approved","description":"Invoke only broker-authorized synthetic operations.","inputSchema":handle_schema()},
         {"name":"get_run_status","description":"Read this session's status; polling does not refresh authority.","inputSchema":handle_schema()},
         {"name":"cancel","description":"Prevent an undispatched request; cannot retract a dispatched effect.","inputSchema":handle_schema()}
-    ]})
+    ]});
+    if version == protocol::OPERATION_PROTOCOL_VERSION {
+        result["tools"][1]["description"]=json!("Resolve an explicitly versioned synthetic operation; no credentials or approval fields.");
+        result["tools"][1]["inputSchema"] = json!({"type":"object","properties":{"request_id":{"type":"string","minLength":1,"maxLength":64,"pattern":"^[A-Za-z0-9_-]+$"},"profile_id":{"type":"string","enum":["issue-status","github-metadata"]},"operation":{"oneOf":[{"type":"object","properties":{"kind":{"const":"synthetic.issue-status.v1"},"parameters":{"type":"object","properties":{"repository_id":{"type":"integer","minimum":1},"issue_number":{"type":"integer","minimum":1}},"required":["repository_id","issue_number"],"additionalProperties":false}},"required":["kind","parameters"],"additionalProperties":false},{"type":"object","properties":{"kind":{"const":"synthetic.github.repository-metadata.v1"},"parameters":{"type":"object","properties":{"repository_id":{"type":"integer","minimum":1}},"required":["repository_id"],"additionalProperties":false}},"required":["kind","parameters"],"additionalProperties":false}]}},"required":["request_id","profile_id","operation"],"additionalProperties":false});
+    }
+    result
 }
 
 pub struct Adapter<B> {
     bridge: B,
     initialized: bool,
+    operation_version: u32,
 }
 impl<B: Bridge> Adapter<B> {
     pub fn new(bridge: B) -> Self {
         Self {
             bridge,
             initialized: false,
+            operation_version: protocol::PROTOCOL_VERSION,
+        }
+    }
+    /// Explicit opt-in to the typed operation-v2 broker mapping. MCP version is unchanged.
+    pub fn new_v2(bridge: B) -> Self {
+        Self {
+            bridge,
+            initialized: false,
+            operation_version: protocol::OPERATION_PROTOCOL_VERSION,
         }
     }
     pub fn handle(&mut self, frame: &[u8]) -> Option<Value> {
@@ -201,7 +216,7 @@ impl<B: Bridge> Adapter<B> {
                 if rpc.params.as_ref().is_some_and(|v| v != &json!({})) {
                     return Some(rpc_error(id, -32602, "invalid_request"));
                 }
-                Some(rpc_result(id, tools()))
+                Some(rpc_result(id, tools(self.operation_version)))
             }
             "tools/call" => {
                 let call: Call = match serde_json::from_value(rpc.params.unwrap_or(Value::Null)) {
@@ -222,12 +237,20 @@ impl<B: Bridge> Adapter<B> {
                     if call.arguments != json!({}) {
                         return Some(rpc_error(id, -32602, "invalid_request"));
                     }
+                    if self.operation_version == protocol::OPERATION_PROTOCOL_VERSION {
+                        action["params"] = json!({});
+                    }
                 } else {
                     action["params"] = call.arguments;
                 }
-                let request = json!({"version":protocol::PROTOCOL_VERSION,"action":action});
+                let request = json!({"version":self.operation_version,"action":action});
                 // Validate the mapping before IPC, but broker remains the authority.
-                if serde_json::from_value::<protocol::Envelope>(request.clone()).is_err() {
+                let valid = if self.operation_version == protocol::OPERATION_PROTOCOL_VERSION {
+                    serde_json::from_value::<protocol::OperationEnvelope>(request.clone()).is_ok()
+                } else {
+                    serde_json::from_value::<protocol::Envelope>(request.clone()).is_ok()
+                };
+                if !valid {
                     return Some(rpc_error(id, -32602, "invalid_request"));
                 }
                 let response = self.bridge.exchange(&request);
@@ -248,13 +271,22 @@ impl<B: Bridge> Adapter<B> {
 }
 
 /// Stdio is host-visible: protocol messages only; no credential elicitation or logs.
-pub fn serve(
+pub fn serve(input: impl BufRead, output: impl Write, bridge: impl Bridge) -> std::io::Result<()> {
+    serve_adapter(input, output, Adapter::new(bridge))
+}
+pub fn serve_v2(
     input: impl BufRead,
-    mut output: impl Write,
+    output: impl Write,
     bridge: impl Bridge,
 ) -> std::io::Result<()> {
+    serve_adapter(input, output, Adapter::new_v2(bridge))
+}
+fn serve_adapter(
+    input: impl BufRead,
+    mut output: impl Write,
+    mut adapter: Adapter<impl Bridge>,
+) -> std::io::Result<()> {
     let mut input = input;
-    let mut adapter = Adapter::new(bridge);
     for _ in 0..protocol::MAX_CONNECTION_FRAMES {
         let mut frame = Vec::new();
         let count = std::io::Read::take(&mut input, (protocol::MAX_FRAME_BYTES + 1) as u64)

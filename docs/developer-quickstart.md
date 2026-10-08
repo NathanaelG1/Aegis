@@ -58,7 +58,7 @@ The agent can now invoke the same prepared handle. To deny it, use `cancel 1` be
 
 After the broker stops and removes its session directory, run `rmdir "$demo_parent"` in the first terminal to remove the empty parent. Cargo commands above also work with a custom `CARGO_TARGET_DIR`; when configuring a host to launch the binary directly, use that build directory rather than assuming `target/debug/aegis`.
 
-The [agent quickstart](agent-quickstart.md) supplies MCP message examples and the [protocol](protocol.md) defines exact tool arguments. Windows has no current broker/MCP socket implementation; Linux code is untested.
+The [agent quickstart](agent-quickstart.md) supplies MCP message examples and the [protocol](protocol.md) defines exact tool arguments. Windows has no current broker/MCP socket implementation; the later Linux check verifies synthetic logic and socket-pair identity but listener-based tests remain blocked in that execution context; see [verification](verification.md).
 
 ## Library entry point
 
@@ -132,3 +132,25 @@ Use fixture IDs, error codes, state transitions, and dispatch counters. Never ad
 If a test produces `outcome_unknown`, preserve the reservation and inspect state. Do not add an automatic retry to make the test pass. If a race is hard to reproduce, use barriers/latches in the fake executor and assert one reservation/dispatch rather than relying on timing sleeps.
 
 This checkpoint does not install services, connect to an operational vault, or create an external repository. See [CONTRIBUTING](../CONTRIBUTING.md) for review and dependency rules.
+
+## Fixed GitHub App exercise
+
+Run `cargo run --locked --offline --example github_app_spike` for the synthetic installation-token/metadata lifecycle and `cargo test --locked --offline github::` for focused adversarial tests. No key, config file, account or network is accepted. Read [the preparation contract](github-app.md) before extending the adapter. This adds no live or agent-facing operation.
+
+For file-backed synthetic intent evidence, run `cargo run --locked --offline --example github_intent_spike -- create /canonical/test-parent/new-journal`, exit, then run the same example with `inspect` and that directory. This creates only new synthetic files; inspection never resumes authority. Read [the journal contract](github-intent-journal.md) for supported bounds, tests and trusted-storage limitations.
+
+## Main broker GitHub operation
+
+Run `cargo run --locked --offline --example github_broker_spike -- /canonical/test-parent/new-journal` to exercise real core policy with synthetic provider data and schema-2 retained intents. [The integration guide](github-broker.md) documents typed V2 JSON, opt-in MCP and foreground commands. The in-process flow is tested; listener-based foreground verification remains blocked by EPERM on the current cloud host.
+
+## Optional disposable-key signing
+
+Run `cargo run --locked --offline --features signing-spike --example signing_spike` for a no-input in-memory RSA signing exercise and safe boolean/count report. This optional graph needs a native C/C++ compiler. No key is imported, saved or connected to a provider. The default broker still uses mocks. Read [the signing contract](signing-spike.md) for lifecycle, strict JWT validation, global-provider limitations and dependency/size evidence.
+
+For the composed optional path, use `cargo run --locked --offline --features signing-spike --example github_signed_spike -- /absolute/new-journal-directory`. Its exact reviewed core approval, journal, disposable signature and mock exchange run in one process; no genuine human presence or socket support is inferred. See [the composition contract](github-signed-composition.md). Neither this example nor a future host selection authorizes real-key entry; use the [readiness checklist](readiness-checklist.md).
+
+## Integrated canary vault
+
+Use `cargo run --locked --offline --features vault-spike --example vault_spike -- create /new/vault /new/separate-fixture-kit /new/recipient` and the same paths with `inspect`. All paths must be dedicated synthetic destinations; never supply a real key. The feature reuses the existing optional crypto graph. [The integrated contract](vault-delivery-spike.md) explains authenticated actor proofs, fixed canaries, durable failures and the deliberately unimplemented real-key gate.
+
+Run `cargo test --locked --offline --all-features --lib vault::protocol::` for the serialized agent/admin connection flow and its role, lifecycle and parser regression cases. The reusable [connection handlers](vault-protocol.md) are library APIs with fixed-canary constructors; they do not start an HTTP/IPC listener or expose the new operation through MCP.

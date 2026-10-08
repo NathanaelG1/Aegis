@@ -64,6 +64,10 @@ pub enum ErrorCode {
     OutcomeUnknown,
     BrokerUnavailable,
     UnsupportedVersion,
+    PersistenceUnavailable,
+    ReconciliationRequired,
+    AuthenticationRequired,
+    UnsupportedDeployment,
 }
 impl fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -214,4 +218,265 @@ pub struct Discovery {
 pub enum ApprovalMode {
     EachRequest,
     BoundedSession,
+}
+
+/// Non-secret fixed GitHub enrollment shown by the trusted review channel.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GithubProfile {
+    pub id: ProfileId,
+    pub revision: u64,
+    pub app_id: u64,
+    pub client_id: String,
+    pub installation_id: u64,
+    pub account_id: u64,
+    pub account_login: String,
+    pub repository_id: u64,
+    pub repository_name: String,
+    pub credential: CredentialBinding,
+    pub installation_contents: GithubPermission,
+    pub installation_metadata: GithubPermission,
+    pub requested_metadata: GithubPermission,
+    pub adapter_contract: u32,
+    pub output_contract: u32,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GithubPermission {
+    Read,
+    Write,
+}
+impl GithubProfile {
+    pub fn synthetic() -> Self {
+        Self {
+            id: ProfileId::new("github-metadata").expect("constant"),
+            revision: 1,
+            app_id: 101,
+            client_id: "Iv1_SYNTHETIC_ONLY".into(),
+            installation_id: 202,
+            account_id: 303,
+            account_login: "NathanaelG1".into(),
+            repository_id: 4242,
+            repository_name: "Aegis".into(),
+            credential: CredentialBinding {
+                secret_id: "synthetic-github-key".into(),
+                version: 1,
+            },
+            installation_contents: GithubPermission::Write,
+            installation_metadata: GithubPermission::Read,
+            requested_metadata: GithubPermission::Read,
+            adapter_contract: 1,
+            output_contract: 1,
+        }
+    }
+    pub(crate) fn validate(&self) -> Result<(), ErrorCode> {
+        let mut expected = Self::synthetic();
+        expected.revision = self.revision;
+        expected.credential.version = self.credential.version;
+        if *self != expected || self.revision == 0 || self.credential.version == 0 {
+            Err(ErrorCode::InvalidRequest)
+        } else {
+            Ok(())
+        }
+    }
+}
+/// Versioned operation kinds cannot borrow another operation's profile or result shape.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OperationProfile {
+    IssueStatus(Profile),
+    GithubMetadata(GithubProfile),
+    #[cfg(all(unix, feature = "vault-spike"))]
+    Delivery(crate::vault::DeliveryProfile),
+}
+impl OperationProfile {
+    pub(crate) fn validate(&self) -> Result<(), ErrorCode> {
+        match self {
+            Self::IssueStatus(p) => p.validate(),
+            Self::GithubMetadata(p) => p.validate(),
+            #[cfg(all(unix, feature = "vault-spike"))]
+            Self::Delivery(p) => p.validate(),
+        }
+    }
+    pub(crate) fn id(&self) -> &ProfileId {
+        match self {
+            Self::IssueStatus(p) => &p.id,
+            Self::GithubMetadata(p) => &p.id,
+            #[cfg(all(unix, feature = "vault-spike"))]
+            Self::Delivery(p) => &p.id,
+        }
+    }
+    pub(crate) fn repository_id(&self) -> u64 {
+        match self {
+            Self::IssueStatus(p) => p.repository_id,
+            Self::GithubMetadata(p) => p.repository_id,
+            #[cfg(all(unix, feature = "vault-spike"))]
+            Self::Delivery(p) => p.repository_id,
+        }
+    }
+    pub(crate) fn permits(&self, operation: &OperationIntent) -> bool {
+        match (self, operation) {
+            (Self::IssueStatus(_), OperationIntent::IssueStatus(parameters)) => {
+                parameters.repository_id == self.repository_id()
+            }
+            (Self::GithubMetadata(_), OperationIntent::GithubMetadata(parameters)) => {
+                parameters.repository_id == self.repository_id()
+            }
+            #[cfg(all(unix, feature = "vault-spike"))]
+            (Self::Delivery(profile), OperationIntent::Delivery(parameters)) => {
+                profile.permits(parameters)
+            }
+            _ => false,
+        }
+    }
+    pub(crate) fn durable(&self) -> bool {
+        !matches!(self, Self::IssueStatus(_))
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GithubMetadataParameters {
+    pub repository_id: u64,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "parameters", deny_unknown_fields)]
+pub enum OperationIntent {
+    #[serde(rename = "synthetic.issue-status.v1")]
+    IssueStatus(Parameters),
+    #[serde(rename = "synthetic.github.repository-metadata.v1")]
+    GithubMetadata(GithubMetadataParameters),
+    #[cfg(all(unix, feature = "vault-spike"))]
+    #[serde(rename = "synthetic.vault.deliver.v1")]
+    Delivery(crate::vault::DeliveryParameters),
+}
+impl OperationIntent {
+    pub(crate) fn validate(&self) -> Result<(), ErrorCode> {
+        match self {
+            Self::IssueStatus(parameters) => parameters.validate(),
+            Self::GithubMetadata(parameters) if parameters.repository_id > 0 => Ok(()),
+            #[cfg(all(unix, feature = "vault-spike"))]
+            Self::Delivery(parameters) => parameters.validate(),
+            _ => Err(ErrorCode::InvalidRequest),
+        }
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperationPrepareInput {
+    pub request_id: RequestId,
+    pub profile_id: ProfileId,
+    pub operation: OperationIntent,
+}
+impl From<PrepareInput> for OperationPrepareInput {
+    fn from(input: PrepareInput) -> Self {
+        Self {
+            request_id: input.request_id,
+            profile_id: input.profile_id,
+            operation: OperationIntent::IssueStatus(input.parameters),
+        }
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", deny_unknown_fields)]
+pub enum OperationResult {
+    #[serde(rename = "synthetic.issue-status.v1")]
+    IssueStatus(StatusProjection),
+    #[serde(rename = "synthetic.github.repository-metadata.v1")]
+    GithubMetadata(crate::github::RepositoryProjection),
+    #[cfg(all(unix, feature = "vault-spike"))]
+    #[serde(rename = "synthetic.vault.deliver.v1")]
+    Delivery(crate::vault::DeliveryProjection),
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperationRunView {
+    pub prepared_request_id: u64,
+    pub state: Lifecycle,
+    pub result: Option<OperationResult>,
+    pub error: Option<ErrorCode>,
+}
+impl OperationRunView {
+    pub(crate) fn into_legacy(self) -> Result<RunView, ErrorCode> {
+        let result = match self.result {
+            None => None,
+            Some(OperationResult::IssueStatus(result)) => Some(result),
+            Some(_) => return Err(ErrorCode::ScopeDenied),
+        };
+        Ok(RunView {
+            prepared_request_id: self.prepared_request_id,
+            state: self.state,
+            result,
+            error: self.error,
+        })
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationLimits {
+    pub initial_uses: u32,
+    pub idle_seconds: u64,
+    pub maximum_seconds: u64,
+    pub request_seconds: u64,
+    pub maximum_requests: usize,
+    pub maximum_concurrent: usize,
+}
+/// Trusted review data only; never an agent-supplied approval capability.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OperationApprovalView {
+    pub(crate) broker_instance: [u8; 16],
+    pub prepared_request_id: u64,
+    pub request_id: RequestId,
+    pub limits: OperationLimits,
+    pub principal: PrincipalId,
+    pub session: u64,
+    pub profile: OperationProfile,
+    pub operation: OperationIntent,
+    pub policy_generation: u64,
+    pub expires_at: u64,
+    pub remaining_uses: u32,
+}
+impl OperationApprovalView {
+    pub(crate) fn into_legacy(self) -> Result<ApprovalView, ErrorCode> {
+        let (profile, parameters) = match (self.profile, self.operation) {
+            (OperationProfile::IssueStatus(profile), OperationIntent::IssueStatus(parameters)) => {
+                (profile, parameters)
+            }
+            _ => return Err(ErrorCode::ScopeDenied),
+        };
+        Ok(ApprovalView {
+            broker_instance: self.broker_instance,
+            prepared_request_id: self.prepared_request_id,
+            principal: self.principal,
+            session: self.session,
+            profile,
+            parameters,
+            policy_generation: self.policy_generation,
+            expires_at: self.expires_at,
+            remaining_uses: self.remaining_uses,
+        })
+    }
+}
+impl OperationApprovalView {
+    pub(crate) fn from_legacy(
+        view: &ApprovalView,
+        request_id: RequestId,
+        limits: OperationLimits,
+    ) -> Self {
+        Self {
+            broker_instance: view.broker_instance,
+            request_id,
+            limits,
+            prepared_request_id: view.prepared_request_id,
+            principal: view.principal.clone(),
+            session: view.session,
+            profile: OperationProfile::IssueStatus(view.profile.clone()),
+            operation: OperationIntent::IssueStatus(view.parameters.clone()),
+            policy_generation: view.policy_generation,
+            expires_at: view.expires_at,
+            remaining_uses: view.remaining_uses,
+        }
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct OperationDiscovery {
+    pub verified: bool,
+    pub profile_id: ProfileId,
+    pub operation: String,
+    pub protocol_version: u32,
 }

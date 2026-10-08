@@ -289,6 +289,13 @@ fn open_connection(socket: &Path) -> Result<(BufReader<DeadlineStream>, String),
 }
 impl crate::mcp::Bridge for SocketBridge {
     fn exchange(&mut self, request: &serde_json::Value) -> protocol::Response {
+        let expected_version = request
+            .get("version")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        if !matches!(expected_version, 1 | 2) {
+            return protocol::Response::failure(ErrorCode::UnsupportedVersion);
+        }
         let result = (|| {
             let (mut reader, epoch) = open_connection(&self.socket)?;
             if epoch != self.epoch {
@@ -310,13 +317,17 @@ impl crate::mcp::Bridge for SocketBridge {
             }
             let response: protocol::Response =
                 serde_json::from_slice(&frame).map_err(|_| ErrorCode::InvalidProviderResult)?;
-            if response.version != protocol::PROTOCOL_VERSION
+            if u64::from(response.version) != expected_version
                 || response.error.is_some() == response.result.is_some()
             {
                 return Err(ErrorCode::InvalidProviderResult);
             }
             Ok(response)
         })();
-        result.unwrap_or_else(protocol::Response::failure)
+        result.unwrap_or_else(|error| {
+            let mut response = protocol::Response::failure(error);
+            response.version = expected_version as u32;
+            response
+        })
     }
 }

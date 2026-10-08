@@ -26,7 +26,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         [arg] if matches!(arg.as_str(), "--help" | "-h" | "help") => {
-            println!("Aegis experimental, synthetic-only\n\nCommands:\n  demo                  Scripted trusted-host policy demo\n  synthetic-agent       Standalone strict JSON-lines fixture (no control channel)\n  synthetic-broker --socket-dir NEW_ABSOLUTE_DIRECTORY\n                        Foreground Unix broker; private terminal controls\n  mcp --socket ABSOLUTE_SOCKET_PATH\n                        Thin stdio client for an already running broker\n\nHuman control: inspect ID, approve ID, cancel ID, revoke, stop.\nNo real-secret input or live provider; see README.md for verified limits.");
+            println!("Aegis experimental, synthetic-only\n\nCommands:\n  demo                  Scripted trusted-host policy demo\n  synthetic-agent       Standalone strict JSON-lines fixture (no control channel)\n  synthetic-broker --socket-dir NEW_ABSOLUTE_DIRECTORY\n                        Foreground Unix broker; private terminal controls\n  mcp --socket ABSOLUTE_SOCKET_PATH\n                        Legacy issue-status stdio client\n  synthetic-github-broker --socket-dir NEW_DIRECTORY --journal-dir NEW_DIRECTORY\n                        Fixed synthetic GitHub operation with retained intents\n  mcp-v2 --socket ABSOLUTE_SOCKET_PATH\n                        Version-2 typed-operation stdio client\n\nHuman control: inspect ID, approve ID, cancel ID, revoke, stop.\nNo real-secret input or live provider; see README.md for verified limits.");
             Ok(())
         }
         [arg] if arg == "demo" => demo(),
@@ -40,6 +40,32 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         [arg, flag, path] if arg == "mcp" && flag == "--socket" => mcp(std::path::Path::new(path)),
+        [arg, flag, path] if arg == "mcp-v2" && flag == "--socket" => {
+            mcp_v2(std::path::Path::new(path))
+        }
+        [arg, socket_flag, socket, journal_flag, journal]
+            if arg == "synthetic-github-broker"
+                && socket_flag == "--socket-dir"
+                && journal_flag == "--journal-dir" =>
+        {
+            github_foreground(
+                std::path::Path::new(socket),
+                std::path::Path::new(journal),
+                false,
+            )
+        }
+        [arg, socket_flag, socket, journal_flag, journal, test_flag]
+            if arg == "synthetic-github-broker"
+                && socket_flag == "--socket-dir"
+                && journal_flag == "--journal-dir"
+                && test_flag == "--synthetic-control-pipe" =>
+        {
+            github_foreground(
+                std::path::Path::new(socket),
+                std::path::Path::new(journal),
+                true,
+            )
+        }
         [arg, flag, path] if arg == "synthetic-broker" && flag == "--socket-dir" => {
             foreground(std::path::Path::new(path), false)
         }
@@ -69,6 +95,40 @@ fn foreground(
     directory: &std::path::Path,
     synthetic_pipe: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    foreground_profile(directory, synthetic_pipe, None)
+}
+#[cfg(unix)]
+fn github_foreground(
+    socket: &std::path::Path,
+    journal: &std::path::Path,
+    synthetic_pipe: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    foreground_profile(socket, synthetic_pipe, Some(journal))
+}
+#[cfg(not(unix))]
+fn github_foreground(
+    _: &std::path::Path,
+    _: &std::path::Path,
+    _: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    Err(aegis::ErrorCode::InteractionRequired.into())
+}
+#[cfg(unix)]
+fn mcp_v2(socket: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    let bridge = aegis::ipc::SocketBridge::connect(socket)?;
+    aegis::mcp::serve_v2(std::io::stdin().lock(), std::io::stdout().lock(), bridge)?;
+    Ok(())
+}
+#[cfg(not(unix))]
+fn mcp_v2(_: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    Err(aegis::ErrorCode::InteractionRequired.into())
+}
+#[cfg(unix)]
+fn foreground_profile(
+    directory: &std::path::Path,
+    synthetic_pipe: bool,
+    github_journal: Option<&std::path::Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::{BufRead, IsTerminal};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::{Duration, Instant};
@@ -77,15 +137,23 @@ fn foreground(
     }
     let endpoint = aegis::ipc::Endpoint::create(directory)?;
     let principal = aegis::PrincipalId::new(format!("local-uid-{}", nix::unistd::geteuid()))?;
-    let setup = SyntheticSetup {
-        principal,
-        ..SyntheticSetup::default()
+    let (control, client) = if let Some(journal) = github_journal {
+        let setup = aegis::OperationSetup {
+            principal,
+            ..aegis::OperationSetup::synthetic_github()
+        };
+        Control::synthetic_github(setup, Arc::new(MonotonicClock::default()), journal)?
+    } else {
+        let setup = SyntheticSetup {
+            principal,
+            ..SyntheticSetup::default()
+        };
+        Control::synthetic(
+            setup,
+            Arc::new(MonotonicClock::default()),
+            Arc::new(FakeProvider::default()),
+        )?
     };
-    let (control, client) = Control::synthetic(
-        setup,
-        Arc::new(MonotonicClock::default()),
-        Arc::new(FakeProvider::default()),
-    )?;
     let control = Arc::new(control);
     let running = Arc::new(AtomicBool::new(true));
     eprintln!(
@@ -98,7 +166,7 @@ fn foreground(
     let control_client = client.clone();
     std::thread::spawn(move || {
         let mut stdin = std::io::stdin().lock();
-        let mut reviewed: Option<(u64, aegis::ApprovalView)> = None;
+        let mut reviewed: Option<(u64, aegis::OperationApprovalView)> = None;
         for _ in 0..128 {
             let mut frame = Vec::new();
             let count = match std::io::Read::take(&mut stdin, 257).read_until(b'\n', &mut frame) {
@@ -119,17 +187,26 @@ fn foreground(
             let outcome = match words.as_slice() {
                 ["stop"] => { let _ = control_thread.stop(); run_thread.store(false, Ordering::SeqCst); break; },
                 ["revoke"] => control_thread.revoke(),
+                ["revoke-tokens"] => control_thread.revoke_provider_tokens().map(|status| eprintln!("synthetic_provider_revocation {status:?}")),
                 [method, handle] => match handle.parse::<u64>() {
                     Ok(id) => match *method {
-                        "inspect" => control_thread.inspect_approval(id).map(|view| {
-                            eprintln!("Resolved synthetic request: principal={} session={} operation=issue-status resource={} issue={} profile_revision={} credential=synthetic-fixture credential_version={} output_contract={} generation={} expiry={} remaining_uses={} mode=portable-workflow effects=synthetic-read output=repository_id,issue_number,state idle_seconds=600 maximum_seconds=1800", view.principal.as_str(), view.session, view.parameters.repository_id, view.parameters.issue_number, view.profile.revision, view.profile.credential.version, view.profile.output_contract, view.policy_generation, view.expires_at, view.remaining_uses);
-                            reviewed = Some((id, view));
+                        "inspect" => control_thread.inspect_operation_approval(id).and_then(|view| {
+                            match (&view.profile,&view.operation) {
+                                (aegis::OperationProfile::IssueStatus(profile),aegis::OperationIntent::IssueStatus(parameters)) => {
+                                    eprintln!("Resolved synthetic request: principal={} session={} operation=issue-status resource={} issue={} profile_revision={} credential=synthetic-fixture credential_version={} output_contract={} generation={} expiry={} remaining_uses={} mode=portable-workflow effects=synthetic-read output=repository_id,issue_number,state idle_seconds=600 maximum_seconds=1800", view.principal.as_str(), view.session, parameters.repository_id, parameters.issue_number, profile.revision, profile.credential.version, profile.output_contract, view.policy_generation, view.expires_at, view.remaining_uses);
+                                }
+                                (aegis::OperationProfile::GithubMetadata(profile),aegis::OperationIntent::GithubMetadata(parameters)) => {
+                                    eprintln!("Resolved synthetic GitHub request: prepared_request_id={} request_id={} principal={} session={} operation=synthetic.github.repository-metadata.v1 app={} client={} installation={} owner={}:{} account_type=User repository={}:{} selection=selected signer={} signer_version={} profile_revision={} adapter_contract={} output_contract={} generation={} expiry={} remaining_uses={} permissions=metadata:read installation_contents={:?} installation_metadata={:?} limits={:?} effects=mock-token-mint,mock-metadata-read output=repository_id,private,archived real_keys=false",view.prepared_request_id,view.request_id.as_str(),view.principal.as_str(),view.session,profile.app_id,profile.client_id,profile.installation_id,profile.account_login,profile.account_id,parameters.repository_id,profile.repository_name,profile.credential.secret_id,profile.credential.version,profile.revision,profile.adapter_contract,profile.output_contract,view.policy_generation,view.expires_at,view.remaining_uses,profile.installation_contents,profile.installation_metadata,view.limits);
+                                }
+                                _=>return Err(aegis::ErrorCode::ScopeDenied),
+                            }
+                            reviewed=Some((id,view));Ok(())
                         }),
                         "approve" => match reviewed.take() {
-                            Some((reviewed_id, view)) if reviewed_id == id => control_thread.approve_reviewed(id, &view).map(|_| ()),
+                            Some((reviewed_id, view)) if reviewed_id == id => control_thread.approve_operation_reviewed(id, &view).map(|_| ()),
                             _ => Err(aegis::ErrorCode::ApprovalRequired),
                         },
-                        "cancel" => control_client.cancel(id).map(|_| ()),
+                        "cancel" => control_client.cancel_operation(id).map(|_| ()),
                         _ => Err(aegis::ErrorCode::InvalidRequest),
                     },
                     Err(_) => Err(aegis::ErrorCode::InvalidRequest),

@@ -1,6 +1,6 @@
 # Protected agent-blind application delivery
 
-**Status: required product design, not implemented or verified.** The current code supports synthetic reviewed operations, foreground control, Unix IPC, and a thin MCP client. It has no application enrollment, delivery proposal/approval API, protected-file installation, descriptor handoff, credential-store adapter, authenticated human mechanism, or OS confinement verifier. The existing 99 all-feature tests do not prove this design. [ADR 0007](adr/0007-protected-application-delivery.md) establishes the requirement; [verification](verification.md) records actual implementation evidence.
+**Status: required product design, not implemented or verified.** The current code supports synthetic reviewed operations, foreground control, Unix IPC and MCP, plus an optional [encrypted canary delivery fixture](vault-delivery-spike.md) with typed references and cryptographic actor proofs. It has no operational application enrollment, real-key entry, protected-file installation, descriptor handoff, credential-store adapter, independently authenticated human mechanism or OS confinement verifier. The existing synthetic tests do not prove this design. [ADR 0007](adr/0007-protected-application-delivery.md) establishes the requirement; [verification](verification.md) records actual implementation evidence.
 
 ## Product contract
 
@@ -9,6 +9,18 @@ Aegis must let an agent working under human-delegated authority arrange configur
 For example, an agent may propose linking an enrolled client service to an enrolled provider account using credential reference `provider-account`, version `7`, and recipient slot `provider-auth`. These are illustrative public identifiers, not implemented commands. The broker resolves the recipient, protected configuration, approved endpoint/scope and delivery mechanism; the human reviews the resolved plan. The agent never writes the token or chooses an arbitrary path, command, auth header, endpoint, proxy, or plaintext response route. A reciprocal connection needs its own explicit bindings and authority rather than inheriting consent from the first side.
 
 The approved application receives plaintext and joins the trusted computing base. Its code and effective configuration must prevent returning the token through logs, diagnostics, plugins, proxies, arbitrary operations, or outputs visible to the agent. Isolation alone cannot make a recipient that deliberately exports its token trustworthy.
+
+## Request-driven lifecycle
+
+The primary use is episodic setup of a project, delivery of an approved credential, rotation/replacement, cleanup or reconciliation. Prefer a deployment that can wake for a request and become idle after its durable outcome is recorded. Once configured, the enrolled recipient may call its provider directly without contacting Aegis for every application API call. The broker's separately reviewed bounded-operation/API-mediation mode remains optional and has different availability and latency requirements; it is never an arbitrary proxy or raw-secret export.
+
+The intended sequence is wake, establish the supported isolation and transport boundary, authenticate the caller, load/validate durable state, resolve exact references and current policy, obtain independent approval where needed, reserve durably, perform the enrolled handoff or authorized rotation, retain acknowledgement/uncertainty, return safe status, then allow idle shutdown. A request may trigger infrastructure wake without authorizing any broker action; wake ingress needs bounded admission/rate limits and must not expose secrets or administration.
+
+Revocation records, pending/approved/denied decisions, consumed uses, request IDs and handoff/rotation outcomes must survive a cold start in protected authenticated state. Missing/corrupt/unavailable state, stale snapshot/generation, rollback, uncertain handoff, unavailable trusted time or a changed recipient/key/policy must fail closed. Sleeping never pauses credential/approval expiry or discards a pending revocation; cold start must establish current trusted time and revocation/policy freshness before any new effect. Concurrent wakes require durable writer exclusion/fencing so a last use cannot be spent twice. A new process gets a fresh epoch/session; old handles and instance-bound approvals cannot silently resume. Reusing any approval across cold starts requires an explicitly approved durable scope/schema plus full current revalidation; until specified and implemented, fresh approval is required. A pending decision never becomes approved because the process restarted.
+
+Idle shutdown does not replace crash recovery: the platform may stop the broker before or after any installation/acknowledgement boundary. Record consumed intent before effects, reconcile ambiguous delivery/rotation without automatic repetition or refund, and never restore older policy or counters from a VM snapshot. Closing an unlock lease or stopping a process does not prove plaintext erasure from memory snapshots, disks or recipients. The current synthetic journal restores no authority and is not this operational state backend.
+
+A sleeping broker cannot itself enforce every later recipient/provider use or instantly revoke delivered plaintext. Future-delivery denial, recipient cleanup/termination and provider-side revocation remain distinct actions; a revocation request may need to wake the trusted broker and complete a separate provider action before reporting that effect. Provider-enforced expiry still applies. Short-lived credentials may need additional on-demand or explicitly authorized scheduled renewal, so infrequent project setup does not imply every provider credential can remain useful indefinitely without refresh. This lifecycle and its cold-start/restore tests are design requirements, not implemented hosting features.
 
 ## Required access boundary
 
@@ -20,7 +32,7 @@ Delivery must fail closed when enrollment, independent approval, confinement, de
 
 ## Proposed typed workflow
 
-These are logical design objects and actions, not Rust types or published MCP/wire methods. Versioned schemas, bounds and error codes must be frozen only after the enforcement spikes.
+These are the intended operational objects/actions. The optional canary fixture implements a closed typed subset; it is not a stable operational enrollment/delivery API or a real application adapter. Versioned schemas, bounds and error codes must be frozen only after the enforcement spikes.
 
 | Object/action | Proposed meaning | Agent-visible data |
 | --- | --- | --- |
@@ -112,6 +124,7 @@ Use only public synthetic canaries and test identities in dedicated fixtures. Ea
 | Provider/route substitution | Endpoint, DNS/destination policy, proxy, redirect, headers, diagnostics or output-route tampering cannot redirect credential use or disclosure |
 | Forged human approval | Agent-supplied approval/identity, replayed receipt, spoofed control endpoint, automated terminal or UI action cannot create consent within the declared mode |
 | Replay and restart | Same ID never repeats handoff; changed bindings conflict; stale epoch/session/approval rejected; crash after installation retains uncertainty and blocks blind retry |
+| Cold start and concurrent wakes | Missing/corrupt/rolled-back state fails closed; fresh authentication/epoch, no stale approval revival, durable last-use exclusion, and retained unknown handoff/rotation without repeat/refund |
 | Concurrent final use and revocation | Forced barriers show at most one final-use reservation; revoke-before-reserve prevents delivery; already reserved completion and cleanup/revocation outcomes are explicit |
 | Path and object races | Symlink, hard link, parent rename, mount/bind-mount/reparse, target replacement and stale handle attempts cannot install to or expose an unapproved object |
 | Hostile recipient extensions | Agent-writable plugin/import/config, malicious proxy, debug endpoint or diagnostic/output route cannot gain access to the protected recipient's token |
