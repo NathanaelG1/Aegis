@@ -1,5 +1,29 @@
 # Verification and evidence
 
+## Hosted source and merged-main checkpoint (2026-10-09)
+
+PR #1 was merged by the operator into
+`90c6d928b54d9edf0f2f610b5fa3f0bd3ff0be43`. Its exact-head
+[push CI run](https://github.com/NathanaelG1/Aegis/actions/runs/37985459603)
+passed on Ubuntu 24.04.5 LTS x86_64, runner image `20261004.327.1`, with
+Rust/Cargo 1.96.1: 169 default and 364 all-feature all-target tests, including all
+21 Unix interface cases in each configuration, zero failed or ignored tests,
+1/21 default/all-feature doctests, formatting, Clippy and rustdoc. The feature
+branch had separately passed the same checks in
+[run 37808429239](https://github.com/NathanaelG1/Aegis/actions/runs/37808429239)
+for exact head `5e168aa2c9c77ad0449403de1091cc7d86d983c2`.
+
+This covers the separated-custody runtime below on hosted Linux. It does not
+cover changes after the recorded source. A fresh 9 October development-workspace
+baseline still produced 350 all-feature passes and the same 14 Unix listener
+failures from restricted binding, with no ignored tests. Neither local aggregate
+nor the quality script is therefore a local pass. No permission change or
+listener bypass was used. Tests exercise dummy fixtures; real-key readiness and
+the stopped independent assurance gate remain unresolved.
+
+The sections below retain the earlier exact-source records and their original
+platform limits.
+
 **Original Mac checkpoint:** 2026-10-06. The tested scope is a synthetic in-memory broker/fake provider, separate Unix foreground and MCP subprocesses, and an optional fixed-fixture age recovery experiment. Passing these tests establishes only their exercised behavior on the recorded build; it does not establish production readiness, real credential custody, genuine human presence, or OS containment.
 
 Protected agent-blind application delivery is required but not yet implemented or verified. Its [contract](application-delivery.md) and [ADR](adr/0007-protected-application-delivery.md) are documentation-only additions. They add no Rust code or tests; the recorded 85/99 counts cover the existing synthetic implementation, not delivery enforcement. No protected file installation, descriptor/store handoff, application enrollment, independently authenticated human control or OS confinement gate has been exercised.
