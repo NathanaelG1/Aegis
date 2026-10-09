@@ -7,3 +7,17 @@ The [MIT license](LICENSE) applies to first-party Aegis source and documentation
 Direct dependencies are serde 1.0.228 (MIT OR Apache-2.0), serde_json 1.0.145 (MIT OR Apache-2.0), getrandom 0.2.17 (MIT OR Apache-2.0), Unix nix 0.29.0 (MIT), and optional age 0.11.1 (MIT OR Apache-2.0). Public API/documentation references and attribution are maintained in [design references](docs/design-provenance.md). No first-party license replaces third-party obligations.
 
 The optional `signing-spike` adds jsonwebtoken 11.1.0 (MIT), aws-lc-rs 1.18.1 (ISC AND (Apache-2.0 OR ISC)), pkcs8 0.11.0 (Apache-2.0 OR MIT), base64 0.22.1 (MIT OR Apache-2.0) and zeroize 1.9.0 (Apache-2.0 OR MIT). Its native aws-lc-sys dependency has additional upstream component terms recorded in the [Linux signing inventory](docs/dependency-inventory-linux-signing.json). That inventory has 19 default, 129 storage-only, 40 signing-only and 146 combined package identities, including build dependencies. The default and storage-only graph versions/features were unchanged by this increment. See [dependency rationale and build requirements](docs/signing-spike.md#dependency-decision-and-cost). No complete legal/advisory/native-code audit is claimed.
+
+The optional `vault-spike` TLS mechanism adds exact Rustls 0.23.45 and rcgen
+0.14.10 pins with default features disabled. The refreshed
+[Linux TLS inventory](docs/dependency-inventory-linux-tls.json) records the
+selected features, declared licenses and versions: 19 default, 127 storage-only,
+39 signing-only and 156 all-feature package identities. This inventory uses
+Cargo's normal/build/dev tree selection; earlier inventories counted the broader
+resolved metadata graph, including unused packages. Comparing the baseline with
+the same corrected method confirms that the first three selected graphs are
+unchanged; the all-feature graph adds 12 package identities. See the
+[TLS dependency decision](docs/tls-transport.md#dependency-provenance-and-feature-effects)
+for the explicit AWS-LC configuration and the upstream advisory motivating the
+Rustls pin. The inventory and that specific advisory check do not constitute a
+complete dependency, license or security audit.

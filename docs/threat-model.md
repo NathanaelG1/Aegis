@@ -1,5 +1,25 @@
 # Threat model
 
+## Protected-mechanism development delta (9 October 2026)
+
+[ADR 0018](adr/0018-protected-mechanism-development.md) adds maintained TLS 1.3
+mutual authentication with exact fixture enrollment and exporter-bound frames,
+a bounded ciphertext-only import experiment, and a fixed recipient child process
+joined to durable broker reservation/receipt handling. These introduce TLS/X.509
+libraries, input/publication code and a process supervisor into the trusted
+implementation. Their contracts record [transport](tls-transport.md),
+[import](protected-entry.md) and [recipient](recipient-process.md) limits.
+
+The development process owns its test TLS identities and simulated human proof
+signers. The recipient child and its parent share one UID and trust domain;
+the current executable is not an immutable enrolled deployment. Input memory,
+path operations, logs, backups, recovery and host control-plane access still need
+the operator-owned boundary. A successful cryptographic channel does not attest
+either endpoint. The import drill and delivery drills are not an operational
+end-to-end service, and no live provider path exists. All real-key admission
+remains refused. Ordinary functional checks for this increment do not resume or
+replace the stopped independent adversarial review.
+
 **Status:** Implemented synthetic policy/Unix/MCP foundation with an optional fixed-fixture recovery experiment. Protected agent-blind application delivery is required but not yet implemented or verified. No independent audit, proven human-presence mechanism, real-secret storage guarantee, or OS containment deployment is established.
 
 ## Product promise and boundary

@@ -17,6 +17,9 @@ use crate::{Clock, ErrorCode, ManualClock};
 use serde::Serialize;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+#[path = "protected_entry.rs"]
+pub mod protected_entry;
+
 const LIFETIME: u64 = 60;
 const RECEIPT_COUNT: usize = 5;
 
@@ -41,7 +44,7 @@ pub struct OperatorEntryReport {
 
 // Everything below is private. These identifiers describe dummy actors; equality
 // checks are not a verifier of real identity, custody or deployed artifacts.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct RoleBinding {
     principal: &'static str,
     enrollment_revision: u64,
@@ -57,7 +60,7 @@ impl RoleBinding {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct Bindings {
     artifact_digest: [u8; 32],
     dependency_digest: [u8; 32],
@@ -103,7 +106,7 @@ impl Bindings {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 enum Prerequisite {
     ArtifactAndConfigurationReview,
     IndependentRecoveryAndAnchor,
@@ -140,7 +143,7 @@ impl Prerequisite {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct FixtureReceipt {
     instance: [u8; 16],
     bindings: Bindings,
@@ -150,7 +153,7 @@ struct FixtureReceipt {
     expires_at: u64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct FrozenReview {
     instance: [u8; 16],
     bindings: Bindings,
@@ -352,8 +355,9 @@ impl Ceremony {
         if state.review.as_ref() != Some(expected) {
             return Err(ErrorCode::PolicyChanged);
         }
-        // Reservation and cancellation share this serialization point. No effect,
-        // persistence, signing permit, decryption or provider call follows it.
+        // Reservation and cancellation share this serialization point. The base
+        // ceremony performs no effect; only the separate fixed-canary import
+        // fixture may consume this token. No broker dispatcher accepts it.
         state.reservations = 1;
         state.phase = Phase::CanaryReserved;
         Ok(CanaryReservation {
