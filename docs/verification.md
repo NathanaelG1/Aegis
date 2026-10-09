@@ -1,5 +1,51 @@
 # Verification and evidence
 
+## Protected mechanism checkpoint (2026-10-09)
+
+Local tested runtime/tooling commit:
+`5d77e58d1a42834bec411bb57196128d7c973092`, based on merged main `90c6d928`.
+Environment: Debian 13.6 Linux x86_64 development workspace, official
+Rust/Cargo 1.96.1. Cargo.lock SHA-256:
+`90e27be2374c74135cd31fe1285db74bdd264d62b64673b217080989ca9de55b`.
+
+- All 293 all-feature library tests passed: 252 baseline plus 10 TLS, 22 import
+  and nine recipient-process tests. The separate real-child integration tests
+  also passed. No operator host, live provider or real credential was used.
+- Full default/all-feature all-target runs with `--no-fail-fast` produced
+  156/393 passes respectively, each with 14 failures and zero ignored tests.
+  The failed names exactly match the freshly rerun baseline's Unix-listener
+  cases blocked by `EPERM`. Neither aggregate nor the local check script is a
+  pass. Existing hosted CI is used for full listener coverage, with its exact
+  head and outcome recorded on the draft PR; the earlier hosted pass below does
+  not cover this new source.
+- Default/all-feature doctests passed 1/26 tests. Formatting, all-feature and
+  all-target Clippy with warnings denied, and rustdoc with warnings denied passed.
+- `tls_spike` completed actual TLS 1.3 mutual authentication, signed agent/admin
+  protocol authentication, reviewed canary delivery, durable inspection and
+  revocation. Its wrong-peer/role/CA/name/ALPN and replay/tamper controls denied.
+- `protected_entry` privately verified a ciphertext-only canary import with
+  exact frozen metadata, then reported repeated-use, cancellation and trailing
+  input denial. The storage identity is ephemeral; operational recovery is absent.
+- The fixed `aegis-recipient-process` executable completed two deliveries with
+  recipient-only private custody in the child, duplicate reuse, fresh cold
+  authentication, rotation and durable revocation. It reported two consumed
+  uses, generation two, zero restored sessions and no automatic retry.
+- The existing default `cargo run -- demo` still worked after adding the second
+  binary. The default, storage-only and signing-only dependency graphs are
+  unchanged when both sources use the corrected Cargo-tree inventory method;
+  the all-feature graph adds 12 package identities (144 to 156).
+
+The three mechanisms are separate fixed-fixture experiments. The import is not
+connected to an operational vault, the TLS fixture's recipient remains local,
+and the separate recipient uses inherited local IPC rather than TLS. Their
+composition does not implement a protected human-to-external-application
+service. The child shares the development UID and remains explicitly
+UNISOLATED. All custody/human-presence/host-protection/real-key flags remain
+false. Native/OS blocking cannot be preempted by fixture deadline checks.
+See their [contracts](adr/0018-protected-mechanism-development.md) and the
+[operator plan](operator-live-trial-plan.md) for remaining gates. The stopped
+independent adversarial review was not resumed or replaced.
+
 ## Hosted source and merged-main checkpoint (2026-10-09)
 
 PR #1 was merged by the operator into
