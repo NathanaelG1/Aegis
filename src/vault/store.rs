@@ -188,6 +188,8 @@ pub(super) struct AclEntry {
 struct Record {
     reference: SecretReference,
     ciphertext_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    import_metadata_digest: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -604,8 +606,42 @@ impl Store {
             records.push(Record {
                 reference: payload.reference.clone(),
                 ciphertext_digest: crypto::hash(&ciphertext),
+                import_metadata_digest: None,
             });
         }
+        Self::initialize(path, kit, acl, records)
+    }
+    /// The sole composed constructor consumes one committed, bounded import.
+    /// It never calls `canary` or the standalone record synthesizer.
+    pub(super) fn create_imported(
+        path: &Path,
+        kit: Arc<BrokerMaterial>,
+        imported: super::entry::protected_entry::ImportedCanary,
+    ) -> Result<Arc<Self>, ErrorCode> {
+        if kit.directory.join("anchor.jws").exists() || kit.directory.join("anchor.next").exists() {
+            return Err(ErrorCode::PersistenceUnavailable);
+        }
+        let (ciphertext, metadata_digest) = imported.consume(&kit)?;
+        new_directory(path)?;
+        write_new(&path.join("secret-1.age"), &ciphertext)?;
+        let records = vec![Record {
+            reference: DeliveryParameters::fixture(1).secret,
+            ciphertext_digest: crypto::hash(&ciphertext),
+            import_metadata_digest: Some(metadata_digest),
+        }];
+        let acl = vec![AclEntry {
+            principal: PrincipalId::new(AGENT).expect("constant"),
+            profile: DeliveryProfile::fixture(1),
+            max_uses: BUDGET,
+        }];
+        Self::initialize(path, kit, acl, records)
+    }
+    fn initialize(
+        path: &Path,
+        kit: Arc<BrokerMaterial>,
+        acl: Vec<AclEntry>,
+        records: Vec<Record>,
+    ) -> Result<Arc<Self>, ErrorCode> {
         let manifest = Manifest {
             schema: 1,
             kind: "aegis.synthetic.vault.manifest.v1".into(),
@@ -698,6 +734,27 @@ impl Store {
             }),
         });
         Ok(store)
+    }
+    pub(super) fn check_imported_record(&self, input: &Path) -> Result<(), ErrorCode> {
+        let [record] = self.manifest.records.as_slice() else {
+            return Err(ErrorCode::PolicyChanged);
+        };
+        let metadata_digest = record
+            .import_metadata_digest
+            .as_ref()
+            .ok_or(ErrorCode::PolicyChanged)?;
+        let original = super::entry::protected_entry::committed_ciphertext(input)?;
+        let stored = read_file(&self.directory.join("secret-1.age"), crypto::MAX_DOCUMENT)?;
+        if original != stored || crypto::hash(&stored) != record.ciphertext_digest {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        let clear = self.kit.storage.decrypt(&stored)?;
+        super::entry::protected_entry::decode_imported_value(
+            &clear.0,
+            metadata_digest,
+            &record.reference,
+        )?;
+        Ok(())
     }
     fn check_storage_view(&self, w: &mut Writer) -> Result<(), ErrorCode> {
         safe_directory(&self.directory)?;
@@ -1067,10 +1124,20 @@ fn validate_manifest(m: &Manifest, kit: &BrokerMaterial) -> Result<(), ErrorCode
         || m.kind != "aegis.synthetic.vault.manifest.v1"
         || m.vault_id != kit.vault_id
         || m.acl_revision != 1
-        || m.records.len() != 2
         || m.acl.len() > 2
         || m.recipient_key != crypto::hash(kit.recipient.to_string().as_bytes())
     {
+        return Err(ErrorCode::PersistenceUnavailable);
+    }
+    // Existing standalone records remain exactly the two original versions.
+    // A single record is accepted only with authenticated import provenance and
+    // the exact one-version ACL; deleting a standalone record cannot opt in.
+    let imported = matches!(m.records.as_slice(), [r] if r.import_metadata_digest.as_ref().is_some_and(|d| d.len() == 43));
+    if imported {
+        if m.acl.len() != 1 || m.acl[0].profile != DeliveryProfile::fixture(1) {
+            return Err(ErrorCode::PersistenceUnavailable);
+        }
+    } else if m.records.len() != 2 || m.records.iter().any(|r| r.import_metadata_digest.is_some()) {
         return Err(ErrorCode::PersistenceUnavailable);
     }
     for (version, r) in [1, 2].into_iter().zip(&m.records) {
@@ -1769,7 +1836,27 @@ impl Store {
             if crypto::hash(&ciphertext) != record.ciphertext_digest {
                 return Err(ErrorCode::PersistenceUnavailable);
             }
-            let clear = self.kit.storage.decrypt(&ciphertext)?;
+            let mut clear = self.kit.storage.decrypt(&ciphertext)?;
+            if let Some(metadata_digest) = &record.import_metadata_digest {
+                let imported = super::entry::protected_entry::decode_imported_value(
+                    &clear.0,
+                    metadata_digest,
+                    &profile.secret,
+                )?;
+                let payload = Payload {
+                    schema: 1,
+                    kind: "aegis.synthetic.secret.v1".into(),
+                    vault_id: self.kit.vault_id.clone(),
+                    reference: profile.secret.clone(),
+                    value: std::str::from_utf8(&imported.0)
+                        .map_err(|_| ErrorCode::InvalidProviderResult)?
+                        .to_owned(),
+                    value_digest: crypto::hash(&imported.0),
+                };
+                clear = PrivateBytes(
+                    serde_json::to_vec(&payload).map_err(|_| ErrorCode::InvalidProviderResult)?,
+                );
+            }
             let payload: Payload =
                 serde_json::from_slice(&clear.0).map_err(|_| ErrorCode::InvalidProviderResult)?;
             validate_payload(&payload, &self.kit.vault_id, &profile.secret)?;

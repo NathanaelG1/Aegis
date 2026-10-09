@@ -248,10 +248,16 @@ pub(super) fn open_recipient_role(path: &Path) -> Result<Arc<RecipientMaterial>,
         writer: verifier(&d.writer_public)?,
     }))
 }
-struct ActorRole {
+pub(super) struct ActorRole {
     signer: ActorSigner,
 }
 impl ActorRole {
+    pub(super) fn agent(custody: &Path, vault_id: &str) -> Result<Self, ErrorCode> {
+        Self::open(&custody.join("agent"), AGENT_KIND, vault_id)
+    }
+    pub(super) fn admin(custody: &Path, vault_id: &str) -> Result<Self, ErrorCode> {
+        Self::open(&custody.join("admin"), ADMIN_KIND, vault_id)
+    }
     fn open(path: &Path, expected: &str, vault_id: &str) -> Result<Self, ErrorCode> {
         let d: ActorDocument = read_role(path)?;
         validate_header(d.schema, &d.kind, expected, &d.vault_id)?;
@@ -266,11 +272,11 @@ impl ActorRole {
         };
         Ok(Self { signer })
     }
-    fn proof(&self, challenge: &ProofChallenge) -> Result<Value, ErrorCode> {
+    pub(super) fn proof(&self, challenge: &ProofChallenge) -> Result<Value, ErrorCode> {
         let signed = self.signer.sign(challenge)?;
         proof_value(&signed)
     }
-    fn reviewed_proof(
+    pub(super) fn reviewed_proof(
         &self,
         challenge: &ProofChallenge,
         expected: &ReviewPlan,

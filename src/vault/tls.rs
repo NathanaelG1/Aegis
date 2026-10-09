@@ -1161,6 +1161,197 @@ fn protocol_drill(
     Ok(())
 }
 
+// The composed fixture supplies its already-assembled broker and process-only
+// recipient. There is no constructor here that can replace it with a local one.
+struct ComposedChannels {
+    agent: EndpointChannel,
+    admin: EndpointChannel,
+    agent_actor: super::custody::ActorRole,
+    admin_actor: super::custody::ActorRole,
+}
+pub(super) struct ComposedRound {
+    pub(super) run: crate::OperationRunView,
+    pub(super) duplicate_reused: bool,
+    pub(super) unauthenticated_agent_denied: bool,
+    pub(super) unauthenticated_admin_denied: bool,
+    pub(super) agent_transcript_contains_canary: bool,
+}
+impl ComposedChannels {
+    fn new(
+        protocol: SyntheticProtocol,
+        custody: &Path,
+        vault_id: &str,
+    ) -> std::result::Result<Self, ErrorCode> {
+        let fixtures = Fixtures::new().map_err(|_| ErrorCode::BrokerUnavailable)?;
+        Ok(Self {
+            agent: EndpointChannel::new(&fixtures, Endpoint::Agent(protocol.agent))
+                .map_err(|_| ErrorCode::BrokerUnavailable)?,
+            admin: EndpointChannel::new(&fixtures, Endpoint::Admin(protocol.admin))
+                .map_err(|_| ErrorCode::BrokerUnavailable)?,
+            agent_actor: super::custody::ActorRole::agent(custody, vault_id)?,
+            admin_actor: super::custody::ActorRole::admin(custody, vault_id)?,
+        })
+    }
+    fn connect(&mut self) -> std::result::Result<(bool, bool), ErrorCode> {
+        let agent_denied = is_error(
+            &exchange(&mut self.agent, "discover_operations", Empty {})?,
+            ErrorCode::AuthenticationRequired,
+        );
+        let admin_denied = is_error(
+            &exchange(&mut self.admin, "revoke_challenge", Empty {})?,
+            ErrorCode::AuthenticationRequired,
+        );
+        let challenge = value(
+            exchange(&mut self.agent, "connect_challenge", Empty {})?,
+            "challenge",
+        )?;
+        let proof = self.agent_actor.proof(&challenge)?;
+        if !is_error(
+            &exchange(&mut self.admin, "connect", &proof)?,
+            ErrorCode::AuthenticationRequired,
+        ) || !is_kind(&exchange(&mut self.agent, "connect", proof)?, "connected")
+        {
+            return Err(ErrorCode::BrokerUnavailable);
+        }
+        let challenge = value(
+            exchange(&mut self.admin, "connect_challenge", Empty {})?,
+            "challenge",
+        )?;
+        if !is_kind(
+            &exchange(
+                &mut self.admin,
+                "connect",
+                self.admin_actor.proof(&challenge)?,
+            )?,
+            "connected",
+        ) || !is_error(
+            &exchange(&mut self.agent, "revoke_challenge", Empty {})?,
+            ErrorCode::InvalidRequest,
+        ) {
+            return Err(ErrorCode::BrokerUnavailable);
+        }
+        Ok((agent_denied, admin_denied))
+    }
+}
+
+pub(super) fn composed_round(
+    protocol: SyntheticProtocol,
+    custody: &Path,
+    vault_id: &str,
+) -> std::result::Result<ComposedRound, ErrorCode> {
+    let mut channels = ComposedChannels::new(protocol, custody, vault_id)?;
+    let (agent_denied, admin_denied) = channels.connect()?;
+    let prepared: crate::OperationRunView = value(
+        exchange(
+            &mut channels.agent,
+            "prepare_operation",
+            OperationPrepareInput {
+                request_id: RequestId::new("composed-import-one")?,
+                profile_id: ProfileId::new("vault-delivery")?,
+                operation: OperationIntent::Delivery(super::DeliveryParameters::fixture(1)),
+            },
+        )?,
+        "run",
+    )?;
+    let id = prepared.prepared_request_id;
+    let awaiting: crate::OperationRunView = value(
+        exchange(
+            &mut channels.agent,
+            "request_approval",
+            Handle {
+                prepared_request_id: id,
+            },
+        )?,
+        "run",
+    )?;
+    if awaiting.state != Lifecycle::AwaitingApproval {
+        return Err(ErrorCode::BrokerUnavailable);
+    }
+    let expected: protocol::ReviewPlan = value(
+        exchange(
+            &mut channels.admin,
+            "inspect_review",
+            Handle {
+                prepared_request_id: id,
+            },
+        )?,
+        "review",
+    )?;
+    // The simulated signer checks the complete broker-resolved profile and exact
+    // delivery parameters, in addition to binding the proof to its review digest.
+    if expected.profile != super::DeliveryProfile::fixture(1)
+        || expected.operation != super::DeliveryParameters::fixture(1)
+    {
+        return Err(ErrorCode::PolicyChanged);
+    }
+    let challenge = value(
+        exchange(&mut channels.admin, "approval_challenge", &expected)?,
+        "challenge",
+    )?;
+    let reviewed_proof = channels.admin_actor.reviewed_proof(&challenge, &expected)?;
+    let approved: crate::OperationRunView = value(
+        exchange(
+            &mut channels.admin,
+            "approve",
+            serde_json::json!({"expected":expected,"proof":reviewed_proof}),
+        )?,
+        "run",
+    )?;
+    if approved.state != Lifecycle::Approved {
+        return Err(ErrorCode::BrokerUnavailable);
+    }
+    let challenge = value(
+        exchange(
+            &mut channels.agent,
+            "invocation_challenge",
+            Handle {
+                prepared_request_id: id,
+            },
+        )?,
+        "challenge",
+    )?;
+    let invocation = serde_json::json!({"prepared_request_id":id,"proof":channels.agent_actor.proof(&challenge)?});
+    let run: crate::OperationRunView = value(
+        exchange(&mut channels.agent, "invoke_approved", &invocation)?,
+        "run",
+    )?;
+    let duplicate: crate::OperationRunView = value(
+        exchange(&mut channels.agent, "invoke_approved", &invocation)?,
+        "run",
+    )?;
+    Ok(ComposedRound {
+        duplicate_reused: run == duplicate,
+        run,
+        unauthenticated_agent_denied: agent_denied,
+        unauthenticated_admin_denied: admin_denied,
+        agent_transcript_contains_canary: channels.agent.transcript_contains_canary,
+    })
+}
+
+pub(super) fn composed_revoke_after_restart(
+    protocol: SyntheticProtocol,
+    custody: &Path,
+    vault_id: &str,
+) -> std::result::Result<bool, ErrorCode> {
+    let mut channels = ComposedChannels::new(protocol, custody, vault_id)?;
+    let (agent_denied, admin_denied) = channels.connect()?;
+    let challenge = value(
+        exchange(&mut channels.admin, "revoke_challenge", Empty {})?,
+        "challenge",
+    )?;
+    if !is_kind(
+        &exchange(
+            &mut channels.admin,
+            "revoke",
+            channels.admin_actor.proof(&challenge)?,
+        )?,
+        "revoked",
+    ) {
+        return Err(ErrorCode::BrokerUnavailable);
+    }
+    Ok(agent_denied && admin_denied)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

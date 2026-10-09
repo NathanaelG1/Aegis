@@ -15,7 +15,8 @@ use super::{reviewed_fixture, CanaryReservation, Ceremony, FrozenReview, RoleBin
 use crate::{
     vault::{
         crypto::{self, Identity, PrivateBytes},
-        store,
+        model::{DeliveryParameters, DeliveryProfile, SecretReference},
+        store::{self, BrokerMaterial},
     },
     ErrorCode, ManualClock,
 };
@@ -66,6 +67,28 @@ struct ImportReview {
     storage_recipient: String,
     input_contract: u32,
     maximum_input_bytes: usize,
+    broker: Option<BrokerImportBinding>,
+}
+#[derive(Clone, Eq, PartialEq, Serialize)]
+struct BrokerImportBinding {
+    vault_id: String,
+    writer_key_digest: String,
+    recipient_key_digest: String,
+    receipt_key_digest: String,
+    secret: SecretReference,
+    profile: DeliveryProfile,
+}
+impl BrokerImportBinding {
+    fn fixture(kit: &BrokerMaterial) -> Self {
+        Self {
+            vault_id: kit.vault_id.clone(),
+            writer_key_digest: crypto::hash(kit.writer.verifier().fixture_der()),
+            recipient_key_digest: crypto::hash(kit.recipient.to_string().as_bytes()),
+            receipt_key_digest: crypto::hash(kit.receipt.fixture_der()),
+            secret: DeliveryParameters::fixture(1).secret,
+            profile: DeliveryProfile::fixture(1),
+        }
+    }
 }
 struct Input {
     bytes: Zeroizing<[u8; MAX_INPUT]>,
@@ -176,6 +199,7 @@ impl<'a> ImportSession<'a> {
                 storage_recipient: identity.recipient().to_string(),
                 input_contract: 1,
                 maximum_input_bytes: MAX_INPUT,
+                broker: None,
             },
             state: Mutex::new(State {
                 phase: Phase::Frozen,
@@ -296,7 +320,12 @@ impl<'a> ImportSession<'a> {
         }
         let input = Input::read(reader, || self.reading(&mut *self.lock()?, current))?;
         // Defense in depth: even private integration cannot import arbitrary bytes.
-        if input.bytes[..input.len] != *CANARY {
+        let expected = if self.review.broker.is_some() {
+            store::CANARY_ONE.as_bytes()
+        } else {
+            CANARY
+        };
+        if input.bytes[..input.len] != *expected {
             return Err(ErrorCode::ScopeDenied);
         }
         let plaintext = envelope(&self.review, &input)?;
@@ -359,7 +388,7 @@ enum Fault {
     #[cfg(test)]
     Cleanup,
 }
-fn validate_destination(path: &Path) -> Result<(), ErrorCode> {
+pub(in crate::vault) fn validate_destination(path: &Path) -> Result<(), ErrorCode> {
     if !path.is_absolute()
         || path.as_os_str().len() > 1024
         || path.file_name().is_none()
@@ -531,13 +560,125 @@ impl Drop for Transaction {
 }
 
 fn fixture_frame() -> PrivateBytes {
-    let mut frame = PrivateBytes(Vec::with_capacity(12 + CANARY.len()));
+    canary_frame(CANARY)
+}
+fn canary_frame(canary: &[u8]) -> PrivateBytes {
+    let mut frame = PrivateBytes(Vec::with_capacity(12 + canary.len()));
     frame.0.extend_from_slice(INPUT_MAGIC);
     frame
         .0
-        .extend_from_slice(&(CANARY.len() as u32).to_be_bytes());
-    frame.0.extend_from_slice(CANARY);
+        .extend_from_slice(&(canary.len() as u32).to_be_bytes());
+    frame.0.extend_from_slice(canary);
     frame
+}
+
+// A committed input capability, not a plaintext accessor. Consumption checks the
+// exact file again and is one-shot even on failure. No caller can construct one.
+pub(in crate::vault) struct ImportedCanary {
+    review: ImportReview,
+    ciphertext_digest: String,
+}
+impl ImportedCanary {
+    pub(in crate::vault) fn consume(
+        self,
+        kit: &BrokerMaterial,
+    ) -> Result<(Vec<u8>, String), ErrorCode> {
+        if self.review.broker != Some(BrokerImportBinding::fixture(kit))
+            || self.review.storage_recipient != kit.storage.recipient().to_string()
+            || self.review.entry.bindings.secret_reference != "synthetic-provider-key"
+            || self.review.entry.bindings.secret_version != 1
+            || self.review.entry.bindings.recipient_generation != 0
+        {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        let ciphertext = committed_ciphertext(&self.review.destination)?;
+        if crypto::hash(&ciphertext) != self.ciphertext_digest {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        let metadata = serde_json::to_vec(&self.review).map_err(|_| ErrorCode::InvalidRequest)?;
+        let metadata_digest = crypto::hash(&metadata);
+        let clear = kit.storage.decrypt(&ciphertext)?;
+        decode_imported_value(
+            &clear.0,
+            &metadata_digest,
+            &DeliveryParameters::fixture(1).secret,
+        )?;
+        Ok((ciphertext, metadata_digest))
+    }
+}
+
+pub(in crate::vault) fn committed_ciphertext(destination: &Path) -> Result<Vec<u8>, ErrorCode> {
+    store::safe_directory(destination)?;
+    let mut entries = fs::read_dir(destination).map_err(|_| ErrorCode::PersistenceUnavailable)?;
+    let first = entries
+        .next()
+        .ok_or(ErrorCode::ReconciliationRequired)?
+        .map_err(|_| ErrorCode::PersistenceUnavailable)?;
+    if first.file_name() != COMMITTED || entries.next().is_some() {
+        return Err(ErrorCode::ReconciliationRequired);
+    }
+    store::read_file(&destination.join(COMMITTED), crypto::MAX_DOCUMENT)
+}
+
+/// Validate the authenticated metadata digest and read the actual bounded input
+/// bytes. The caller must use these bytes; this never synthesizes a replacement.
+pub(in crate::vault) fn decode_imported_value(
+    clear: &[u8],
+    metadata_digest: &str,
+    reference: &SecretReference,
+) -> Result<PrivateBytes, ErrorCode> {
+    if reference != &DeliveryParameters::fixture(1).secret
+        || clear.len() < 16
+        || clear.len() > crypto::MAX_CLEAR
+        || &clear[..8] != ENVELOPE_MAGIC
+    {
+        return Err(ErrorCode::InvalidProviderResult);
+    }
+    let metadata_len = u32::from_be_bytes(
+        clear[8..12]
+            .try_into()
+            .map_err(|_| ErrorCode::InvalidProviderResult)?,
+    ) as usize;
+    let end = 12usize
+        .checked_add(metadata_len)
+        .ok_or(ErrorCode::CapacityExceeded)?;
+    if metadata_len > MAX_METADATA
+        || end + 4 > clear.len()
+        || crypto::hash(&clear[12..end]) != metadata_digest
+    {
+        return Err(ErrorCode::PolicyChanged);
+    }
+    let input_len = u32::from_be_bytes(
+        clear[end..end + 4]
+            .try_into()
+            .map_err(|_| ErrorCode::InvalidProviderResult)?,
+    ) as usize;
+    let input = &clear[end + 4..];
+    if input_len != input.len() || input_len > MAX_INPUT || input != store::CANARY_ONE.as_bytes() {
+        return Err(ErrorCode::InvalidProviderResult);
+    }
+    Ok(PrivateBytes(input.to_vec()))
+}
+
+pub(in crate::vault) fn import_delivery_canary(
+    destination: &Path,
+    kit: &BrokerMaterial,
+) -> Result<ImportedCanary, ErrorCode> {
+    let ceremony = Ceremony::fixture(Arc::new(ManualClock::default()))?;
+    let mut session = ImportSession::fixture(&ceremony, destination, &kit.storage)?;
+    session.review.broker = Some(BrokerImportBinding::fixture(kit));
+    session.approve(&ceremony.bindings.operator, &session.review)?;
+    session.import(
+        &mut Cursor::new(&canary_frame(store::CANARY_ONE.as_bytes()).0),
+        &session.review,
+        &kit.storage,
+        Fault::None,
+    )?;
+    let ciphertext = committed_ciphertext(destination)?;
+    Ok(ImportedCanary {
+        review: session.review,
+        ciphertext_digest: crypto::hash(&ciphertext),
+    })
 }
 fn verified_fixture(review: &ImportReview, identity: &Identity) -> Result<bool, ErrorCode> {
     store::safe_directory(&review.destination)?;
