@@ -22,6 +22,7 @@ pub mod protocol;
 pub mod recipient_adapter;
 mod runtime;
 mod store;
+pub mod tls;
 pub mod transport;
 pub(crate) use auth::AuthenticatedSession;
 pub use model::{
