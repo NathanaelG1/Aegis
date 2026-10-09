@@ -97,3 +97,7 @@ State the exact operation/resource and why work stopped. For approval, refer the
 The implemented stdio MCP adapter exposes the same bounded broker contract. MCP annotations, tool descriptions, and accepting an out-of-band interaction are not the broker's authorization decision. Neither MCP stdout nor stderr is a private credential channel.
 
 See [contracts](contracts.md) for lifecycle/bindings and [verification](verification.md) for current evidence.
+
+## Synthetic GitHub operation (explicit V2)
+
+Use the separately configured V2 broker/MCP mode and [the exact versioned schema](github-broker.md#wire-version-2). Request approval, then wait for the trusted control channel; no agent field can approve. V1 handle calls reject GitHub requests. Inputs identify only the fixed repository and operation; never provide keys, tokens, endpoints or shell commands. Real GitHub access is still unavailable.

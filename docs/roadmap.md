@@ -19,6 +19,8 @@ Exit gate: enough evidence to freeze the host/mode matrix, operation and deliver
 
 ## B — Portable storage foundation
 
+An optional [disposable sign-only source](signing-spike.md) now exercises exact key references, lifecycle and maintained-library JWT signing independently of the broker. It is not persistent custody. The subsequent [synthetic composition](github-signed-composition.md) binds leases to approved adapter revisions and preserves durable unknown outcomes. Implementation now pauses at the [deployment decision checkpoint](readiness-checklist.md) before considering a protected backend.
+
 The optional age spike demonstrates fixed-schema encryption, two recipients, saved-kit fresh-process recovery, and disabled restored authority. It has no passphrase-protected identity or operational transaction protocol. Build the operational credential-source/backend interface while keeping key providers separate. Use bounded versioned snapshots, exact profiles, private human setup, ordinary serialized commits, backup, and restore to new destinations. Public metadata remains non-authoritative; restored grants are disabled.
 
 Exit gate: actual encrypted snapshot restoration by a fresh process using an independently saved kit on the tested OS matrix; cancellation never overwrites another vault; invalid/corrupt inputs produce no effect; crashes leave a usable committed pair. Real-secret persistence remains gated until demonstrated.
@@ -79,3 +81,19 @@ Native unlock convenience, persistent background broker, persistent cross-sessio
 ## Effort treatment
 
 Re-estimate storage, broker, provider, MCP, host integration, platform verification, and remediation after the feasibility spikes. Experimental alpha availability is distinct from stable reviewed release readiness.
+
+## First integration — personal GitHub App
+
+[ADR 0008](adr/0008-github-app-synthetic-preparation.md) implements the first [synthetic provider-boundary milestone](github-app.md#milestones). The next gates are protected deployment/human approval; sign-only key custody and durable pre-mint recovery; versioned broker metadata operation and bounded live transport; then a protected Git worker or individually reviewed writes. No milestone may bypass the application-delivery gates above. Selected personal repositories only; organization access, Workflows/admin permissions and user tokens remain excluded.
+
+The next code milestone, [synthetic retained GitHub intents](github-intent-journal.md), is implemented: pre-effect synced records, strict recovery inspection and zero restored authority. This progresses fault-model evidence without completing protected storage, authenticated reconciliation or durable production grants. The next safe code slice is versioned broker operation/approval integration and protected-storage/recovery abstractions using fixtures; actual identity/confinement/human-channel/key provisioning requires a separate authorized deployment.
+
+The [versioned synthetic core integration](github-broker.md) is now implemented: exact reviewed GitHub approval, shared broker invariants, one-shot dispatch, V2 JSON/MCP and schema-2 broker-bound journal context. Remaining safe code work includes protected-storage/key-source abstractions and authenticated recovery design using fixtures, followed by maintained signing and bounded live-transport implementations kept gated. Actual service/confinement/human-channel/key provisioning still requires an independently approved deployment.
+
+## Vendor-neutral access decision (2026-10-07)
+
+[ADR 0013](adr/0013-vendor-neutral-authentication-and-acl.md) accepts application authentication plus exact deny-by-default ACLs as the default future API design. Authentication bootstrap and stable principal mapping, ACL/admin integration, TLS/proxy enforcement and private-listener exposure tests are bounded implementation gates described in [access control](access-control.md). Private networking belongs to the operator and is optional; no hosting/VPN vendor is required. Architecture and synthetic acceptance work may proceed within its authorization, while remote activation, credential enrollment and host security changes remain gated.
+
+## Request-driven delivery clarification (2026-10-07)
+
+[ADR 0014](adr/0014-request-driven-delivery-lifecycle.md) prioritizes episodic setup/delivery/rotation with a wake-compatible lifecycle. Add protected persistent approval/revocation/use records, cold-start/rollback refusal, concurrent-wake fencing and retained handoff uncertainty to the delivery exit gates. Do not require mediation of every recipient API call; keep bounded API operations as an optional distinct mode. This is documentation only, with no selected host or implemented delivery/wake capability.

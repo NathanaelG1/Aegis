@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::io::{BufRead, Write};
 
 pub const PROTOCOL_VERSION: u32 = 1;
+pub const OPERATION_PROTOCOL_VERSION: u32 = 2;
 pub const MAX_FRAME_BYTES: usize = 16 * 1024;
 pub const MAX_CONNECTION_FRAMES: usize = 256;
 
@@ -30,6 +31,37 @@ pub enum Action {
     GetRunStatus(Handle),
     Cancel(Handle),
 }
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperationEnvelope {
+    pub version: u32,
+    pub action: OperationAction,
+}
+#[derive(Debug, Deserialize)]
+#[serde(
+    tag = "method",
+    content = "params",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum OperationAction {
+    DiscoverOperations(Empty),
+    PrepareOperation(crate::OperationPrepareInput),
+    RequestApproval(Handle),
+    InvokeApproved(Handle),
+    GetRunStatus(Handle),
+    Cancel(Handle),
+}
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Empty {}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VersionHeader {
+    version: u32,
+    action: serde::de::IgnoredAny,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Handle {
@@ -66,6 +98,14 @@ pub fn handle(client: &AgentClient, frame: &[u8]) -> Response {
     if frame.len() > MAX_FRAME_BYTES {
         return Response::failure(ErrorCode::InvalidRequest);
     }
+    let header: VersionHeader = match serde_json::from_slice(frame) {
+        Ok(header) => header,
+        Err(_) => return Response::failure(ErrorCode::InvalidRequest),
+    };
+    let _ = header.action;
+    if header.version == OPERATION_PROTOCOL_VERSION {
+        return handle_v2(client, frame);
+    }
     let envelope: Envelope = match serde_json::from_slice(frame) {
         Ok(value) => value,
         Err(_) => return Response::failure(ErrorCode::InvalidRequest),
@@ -84,7 +124,35 @@ pub fn handle(client: &AgentClient, frame: &[u8]) -> Response {
         Action::Cancel(handle) => wrap(client.cancel(handle.prepared_request_id)),
     }
 }
-fn wrap(result: Result<crate::RunView, ErrorCode>) -> Response {
+fn handle_v2(client: &AgentClient, frame: &[u8]) -> Response {
+    let response = match serde_json::from_slice::<OperationEnvelope>(frame) {
+        Err(_) => Response::failure(ErrorCode::InvalidRequest),
+        Ok(envelope) if envelope.version != OPERATION_PROTOCOL_VERSION => {
+            Response::failure(ErrorCode::UnsupportedVersion)
+        }
+        Ok(envelope) => match envelope.action {
+            OperationAction::DiscoverOperations(_) => wrap(client.discover_versioned_operations()),
+            OperationAction::PrepareOperation(input) => wrap(client.prepare_operation(input)),
+            OperationAction::RequestApproval(handle) => {
+                wrap(client.request_operation_approval(handle.prepared_request_id))
+            }
+            OperationAction::InvokeApproved(handle) => {
+                wrap(client.invoke_operation(handle.prepared_request_id))
+            }
+            OperationAction::GetRunStatus(handle) => {
+                wrap(client.operation_status(handle.prepared_request_id))
+            }
+            OperationAction::Cancel(handle) => {
+                wrap(client.cancel_operation(handle.prepared_request_id))
+            }
+        },
+    };
+    Response {
+        version: OPERATION_PROTOCOL_VERSION,
+        ..response
+    }
+}
+fn wrap(result: Result<impl Serialize, ErrorCode>) -> Response {
     match result {
         Ok(value) => Response::success(value),
         Err(error) => Response::failure(error),
