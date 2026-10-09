@@ -1,6 +1,6 @@
 # Operator-controlled Linux trial plan
 
-**8 October 2026 — implementation plan; live use remains NO-GO.** This maps the
+**Updated 9 October 2026 — implementation plan; live use remains NO-GO.** This maps the
 remaining source and deployment work to a bounded first trial. It authorizes no
 host purchase, access change, deployment, credential creation/entry or provider
 operation. The previously stopped independent review remains incomplete; this
@@ -9,7 +9,7 @@ assurance implied by this plan.
 
 ## 1. Starting evidence and its limits
 
-Source baseline: `f5a3e1d`, whose documented immutable runtime is
+Historical source baseline: `f5a3e1d`, whose documented immutable runtime is
 `ce287cda3fdfff4a18a62ddb27fe5d40cb0ae308`. The
 [verification record](verification.md#recovered-adapter-foundation-checkpoint-2026-10-07)
 reports:
@@ -22,10 +22,17 @@ reports:
   default/all-feature all-target runs had 155/323 passes and the same 14
   listener-binding failures (`EPERM`). The full local quality script is not a
   pass.
-- Entry receipts are simulated; transport is in-memory framing without peer
-  authentication or confidentiality; the separate recipient adapter is not
-  connected to the durable runtime. Role-limited Rust objects do not establish
+- At that baseline, entry receipts were simulated; transport was in-memory
+  framing without peer authentication or confidentiality; the separate recipient
+  adapter was not connected to the durable runtime. Role-limited Rust objects do not establish
   process isolation. The all-role fixture kit is development material.
+
+The later [TLS](tls-transport.md), [bounded import](protected-entry.md) and
+[recipient-process](recipient-process.md) increments add real mechanisms in
+separate fixed-fixture drills. The next [composed-canary milestone](composed-canary-flow.md)
+must join the actual imported ciphertext, TLS protocol and child recipient;
+its exact-source evidence is separate from both those drills and this baseline.
+It does not complete the operational C1–C8 requirements below.
 
 These are historical, exact-source functional results, not results for future
 commits or evidence of a secret boundary. Re-run the final candidate. In
@@ -254,3 +261,24 @@ adds bounded report-only evidence handling; actual host observations and
 production admission remain unsupported. These increments advance C1/C2
 interfaces but do not complete their operational requirements or enable any
 live secret. Their exact-source test evidence belongs in the verification record.
+
+## 9. Composed canary and the next operator decision
+
+The [composed flow](composed-canary-flow.md) specifies the next executable
+milestone and an explicit pending-evidence ledger. It must use the actual bounded
+import as the broker's delivery source, preserve durable reservation before
+decryption/handoff, and carry the exact capsule and verified receipt through the
+fixed recipient route. Regenerating an equivalent store fixture or running the
+component examples in sequence does not meet that milestone. The child remains
+UNISOLATED and source-generated readiness or prerequisite claims cannot admit
+live use.
+
+The next operator choices are the exact Linux host/account/OS/filesystem,
+independent human client, protected broker/recipient custody, immutable recipient
+installation/destination, independent anchor and recovery authority, and the
+agent's actual remaining tools. These choices do not replace missing code or
+authorize installation, access/network changes or real-key entry. After the
+code gaps and exact choices are resolved, use sections 4–7 for specific approvals,
+canary deployment evidence and the later go decision. The stopped independent
+adversarial review and permissible assurance path remain unresolved separately;
+the composed run and CI neither resume nor replace that review.

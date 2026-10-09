@@ -16,6 +16,14 @@ Both configurations enable only TLS 1.3. Client resumption and early data are di
 
 The recipient-role exchange currently verifies authenticated transport of a fixed dummy payload. It does not route the runtime recipient capsule or acknowledge installation over TLS. The protocol delivery uses the existing recipient implementation; [recipient integration](recipient-adapter-contract.md) and any future external recipient transport have their own gates.
 
+The [composed canary](composed-canary-flow.md) privately supplies an existing
+broker assembled from the actual imported record and a fixed recipient child.
+It uses two TLS roles, agent and administrator, with separate signed actor
+proofs and exact review validation. Both TLS peers remain in the parent process.
+The child receives the signed age capsule over inherited IPC and does not
+terminate TLS. No additional public TLS constructor or recipient TLS claim is
+introduced by that composition.
+
 ## Exporter-bound application framing
 
 After handshake completion, Rustls derives a 32-byte binding using its standard TLS exporter, label `EXPORTER-Aegis-fixture-channel-v1` and the enrolled role's ALPN as context. This value stays inside encrypted application frames and private memory. It is a per-channel binding, not a custom cipher, MAC or independently protected credential.

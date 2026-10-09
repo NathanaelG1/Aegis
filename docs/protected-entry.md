@@ -2,7 +2,18 @@
 
 **Fixed canary only. Real credentials, protected human input, and live deployment remain unavailable.** This increment extends the [operator-entry metadata ceremony](operator-entry-contract.md) with a private bounded reader and a ciphertext-only fixture transaction. The term “protected entry” names the intended boundary being developed, not a demonstrated protected display, human identity, key custody, or host-isolation guarantee.
 
-The only public operation is `vault::entry::protected_entry::run_synthetic_protected_entry_drill(new_destination: &Path)`. It accepts one new absolute fixture destination. It has no credential, reader, input descriptor, identity, custody provider, configuration, readiness flag, or imported review argument. It reads only a compiled-in disposable canary, using an in-memory cursor. The private import also checks exact equality with that canary before encryption. No agent/admin protocol action or live vault constructor is added. `require_live_deployment()` still returns `unsupported_deployment` unconditionally.
+This module's standalone public operation is `vault::entry::protected_entry::run_synthetic_protected_entry_drill(new_destination: &Path)`. It accepts one new absolute fixture destination. It has no credential, reader, input descriptor, identity, custody provider, configuration, readiness flag, or imported review argument. It reads only a compiled-in disposable canary, using an in-memory cursor. The private import also checks exact equality with that canary before encryption. No agent/admin protocol action or live vault constructor is added. `require_live_deployment()` still returns `unsupported_deployment` unconditionally.
+
+The later [composed canary](composed-canary-flow.md) privately reuses this reader
+and transaction with the fixed version-one delivery canary and the enrolled
+broker's storage identity. Its frozen review also binds the vault, writer and
+recipient keys, secret/version and complete delivery profile. A private one-shot
+committed-import object verifies these bindings and the exact ciphertext before
+the store signs its metadata digest into a one-record manifest. Delivery decodes
+the actual bounded input bytes. Missing or changed artifacts cannot regenerate
+a fixture. This is separate from the standalone drill's ephemeral identity;
+composed dummy role documents support its cold inspection but are not protected
+custody or an operational input-recovery service.
 
 The change adds synthetic persistence and private input handling to the reviewed code surface. It does not change broker authority, operational credential custody, the live gate, or platform support. It uses the existing optional `vault-spike` dependencies, including maintained age encryption and zeroize; it introduces no cryptographic algorithm or dependency.
 
@@ -18,7 +29,7 @@ Approval consumes the existing ceremony's sole reservation into a private non-cl
 
 ## Plaintext and encryption bounds
 
-Only the existing ephemeral age identity can decrypt the output during the drill. It is never written to disk or returned. The encrypted envelope contains a fixed magic, length-delimited JSON of the complete frozen import review, and the length-delimited canary, with no trailing content. The drill decrypts the fixture privately and checks exact metadata/value equality before reporting success.
+Only the existing ephemeral age identity can decrypt the output during the standalone drill. It is never written to disk or returned. The encrypted envelope contains a fixed magic, length-delimited JSON of the complete frozen import review, and the length-delimited canary, with no trailing content. The drill decrypts the fixture privately and checks exact metadata/value equality before reporting success.
 
 Metadata has a 15 KiB cap. Checked arithmetic enforces metadata plus 16 framing bytes plus payload at or below the existing crypto module's 16 KiB plaintext cap before allocating/extending the plaintext envelope. Its owned `PrivateBytes` allocation has fixed capacity and a zeroizing drop. The encrypted output retains the existing 64 KiB crypto cap. The public report distinguishes the private reader's maximum payload size from the fixed canary's actual import size; it does not advertise arbitrary 4096-byte credential import.
 

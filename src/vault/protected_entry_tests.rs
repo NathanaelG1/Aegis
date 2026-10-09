@@ -88,6 +88,168 @@ fn metadata_fits_the_bounded_envelope() {
 }
 
 #[test]
+fn composed_import_keeps_actual_ciphertext_and_binds_exact_broker_and_profile() {
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    let material = kit.broker_material();
+    let imported = import_delivery_canary(&h.destination(), &material).unwrap();
+    let ciphertext = committed_ciphertext(&h.destination()).unwrap();
+    let metadata = serde_json::to_vec(&imported.review).unwrap();
+    assert!(metadata.len() <= MAX_METADATA);
+    assert_eq!(
+        imported.review.broker.as_ref().unwrap().profile,
+        DeliveryProfile::fixture(1)
+    );
+    let clear = material.storage.decrypt(&ciphertext).unwrap();
+    let value = decode_imported_value(
+        &clear.0,
+        &crypto::hash(&metadata),
+        &DeliveryParameters::fixture(1).secret,
+    )
+    .unwrap();
+    assert_eq!(value.0, store::CANARY_ONE.as_bytes());
+    let vault = store::Store::create_imported(&h.root.join("vault"), material, imported).unwrap();
+    vault.check_imported_record(&h.destination()).unwrap();
+    assert_eq!(
+        fs::read(h.root.join("vault/secret-1.age")).unwrap(),
+        ciphertext
+    );
+    assert!(!h.root.join("vault/secret-2.age").exists());
+    assert!(!ciphertext
+        .windows(store::CANARY_ONE.len())
+        .any(|b| b == store::CANARY_ONE.as_bytes()));
+}
+
+#[test]
+fn composed_import_rejects_changed_custody_profile_reference_and_ciphertext() {
+    let mutations: &[fn(&mut ImportReview)] = &[
+        |r| r.broker.as_mut().unwrap().vault_id.push('x'),
+        |r| r.broker.as_mut().unwrap().writer_key_digest.push('x'),
+        |r| r.broker.as_mut().unwrap().recipient_key_digest.push('x'),
+        |r| r.broker.as_mut().unwrap().receipt_key_digest.push('x'),
+        |r| r.broker.as_mut().unwrap().secret.version = 2,
+        |r| r.broker.as_mut().unwrap().profile.recipient.slot.push('x'),
+        |r| r.storage_recipient.push('x'),
+        |r| r.entry.bindings.secret_version = 2,
+        |r| r.entry.bindings.secret_reference = "different-secret",
+        |r| r.entry.bindings.recipient_generation = 1,
+        |r| r.entry.bindings.recipient_destination_digest[0] ^= 1,
+        |r| r.entry.bindings.recipient.verification_key_digest[0] ^= 1,
+        |r| r.broker = None,
+        |r| r.destination.push("missing"),
+    ];
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    let material = kit.broker_material();
+    for (n, change) in mutations.iter().enumerate() {
+        let mut imported =
+            import_delivery_canary(&h.root.join(format!("input-{n}")), &material).unwrap();
+        change(&mut imported.review);
+        assert!(imported.consume(&material).is_err());
+    }
+    let other = store::Kit::create(&h.root.join("other-kit")).unwrap();
+    let imported = import_delivery_canary(&h.destination(), &material).unwrap();
+    assert_eq!(
+        imported.consume(&other.broker_material()).err(),
+        Some(ErrorCode::PolicyChanged)
+    );
+    // Matching ciphertext hashes alone cannot substitute a different legitimate
+    // import: its encrypted frozen review must match this consumed capability.
+    let mut first = import_delivery_canary(&h.root.join("first"), &material).unwrap();
+    let second = import_delivery_canary(&h.root.join("second"), &material).unwrap();
+    let substitute = committed_ciphertext(&second.review.destination).unwrap();
+    fs::write(first.review.destination.join(COMMITTED), &substitute).unwrap();
+    first.ciphertext_digest = crypto::hash(&substitute);
+    assert_eq!(
+        first.consume(&material).err(),
+        Some(ErrorCode::PolicyChanged)
+    );
+    for missing in [false, true] {
+        let destination = h.root.join(if missing {
+            "missing-input"
+        } else {
+            "tampered-input"
+        });
+        let imported = import_delivery_canary(&destination, &material).unwrap();
+        if missing {
+            fs::remove_file(destination.join(COMMITTED)).unwrap();
+        } else {
+            fs::write(destination.join(COMMITTED), b"changed ciphertext").unwrap();
+        }
+        let vault = h.root.join(if missing {
+            "missing-vault"
+        } else {
+            "tampered-vault"
+        });
+        assert!(store::Store::create_imported(&vault, material.clone(), imported).is_err());
+        assert!(!vault.exists());
+    }
+}
+
+#[test]
+fn composed_input_rejects_noncanaries_and_changed_metadata_without_retry() {
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    for (n, bytes) in [CANARY, store::CANARY_TWO.as_bytes(), b"untrusted input"]
+        .into_iter()
+        .enumerate()
+    {
+        let ceremony = Ceremony::fixture(h.clock.clone()).unwrap();
+        let mut session =
+            ImportSession::fixture(&ceremony, &h.root.join(format!("input-{n}")), &kit.storage)
+                .unwrap();
+        session.review.broker = Some(BrokerImportBinding::fixture(&kit.broker_material()));
+        approve(&session);
+        assert_eq!(
+            session.import(
+                &mut Cursor::new(&frame(bytes).0),
+                &session.review,
+                &kit.storage,
+                Fault::None
+            ),
+            Err(ErrorCode::ScopeDenied)
+        );
+        assert_eq!(
+            session.import(
+                &mut Cursor::new(&frame(store::CANARY_ONE.as_bytes()).0),
+                &session.review,
+                &kit.storage,
+                Fault::None
+            ),
+            Err(ErrorCode::BudgetExhausted)
+        );
+        assert!(!session.review.destination.exists());
+    }
+    let imported = import_delivery_canary(&h.destination(), &kit.broker_material()).unwrap();
+    let ciphertext = committed_ciphertext(&h.destination()).unwrap();
+    let clear = kit.storage.decrypt(&ciphertext).unwrap();
+    let digest = crypto::hash(&serde_json::to_vec(&imported.review).unwrap());
+    for pos in [0, 12, clear.0.len() - 1] {
+        let mut changed = PrivateBytes(clear.0.clone());
+        changed.0[pos] ^= 1;
+        assert!(
+            decode_imported_value(&changed.0, &digest, &DeliveryParameters::fixture(1).secret)
+                .is_err()
+        );
+    }
+    assert!(
+        decode_imported_value(&clear.0, &digest, &DeliveryParameters::fixture(2).secret).is_err()
+    );
+    assert!(decode_imported_value(
+        &clear.0,
+        &crypto::hash(b"other metadata"),
+        &DeliveryParameters::fixture(1).secret
+    )
+    .is_err());
+    let mut trailing = PrivateBytes(clear.0.clone());
+    trailing.0.push(0);
+    assert!(
+        decode_imported_value(&trailing.0, &digest, &DeliveryParameters::fixture(1).secret)
+            .is_err()
+    );
+}
+
+#[test]
 fn public_drill_has_closed_safe_results_and_only_ciphertext_on_disk() {
     let h = Harness::new();
     let report = run_synthetic_protected_entry_drill(&h.destination()).unwrap();
