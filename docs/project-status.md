@@ -2,6 +2,30 @@
 
 Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
+## Composed canary checkpoint (9 October 2026)
+
+The [composed canary](composed-canary-flow.md) consumes the actual bounded
+import into a signed one-record vault, authenticates exact approval/invocation
+through agent/admin TLS, and hands the encrypted signed capsule to the fixed
+recipient child. It retains duplicate state, fresh authentication, durable
+revoke and inspection without restored authority. The standalone mechanisms
+and two-version store remain available.
+
+Local integrated validation passed 300 library tests, 6 all-feature and 2
+default CLI acceptance tests, 1/27 doctests, formatting, Clippy and rustdoc.
+Full default/all-feature runs produced 158/406 passes plus the same 14 denied
+listener-dependent cases and zero ignored tests. Exact-head hosted CI is required for each published candidate and recorded on
+its draft PR; see [verification](verification.md). No dependencies changed.
+
+This is a fixed dummy-input flow. Its TLS peers and simulated human signers are
+controlled by the parent fixture; its child shares the development UID and
+control plane. It reports UNISOLATED and real-key readiness false. Operational
+input/custody, independent human enrollment, actual connection service,
+immutable isolated application delivery, external recovery anchor, lifecycle
+and audit, the live GitHub adapter and permissible assurance remain open. The
+operator plan lists the exact host, human client, service identities, custody,
+anchor and effective-access choices required before any canary installation.
+
 ## Protected mechanism checkpoint (9 October 2026)
 
 The [TLS experiment](tls-transport.md) now carries the existing approved canary
@@ -15,8 +39,8 @@ an operational protected human-to-recipient service is not available.
 Integrated local checks passed all 293 library tests, 26 doctests, formatting,
 Clippy and rustdoc. All three examples and the legacy default CLI demo passed.
 Full local default/all-feature runs produced 156/393 passes plus the same 14
-restricted listener failures and no ignored tests. Exact-source hosted CI is
-tracked on the draft PR; see [verification](verification.md).
+restricted listener failures and no ignored tests. The later exact-head hosted run passed 170 default and 407 all-feature tests,
+including all listener cases; see [verification](verification.md).
 
 The recipient explicitly reports UNISOLATED because it shares the development
 UID and host control plane. The operator-controlled Linux host, independently

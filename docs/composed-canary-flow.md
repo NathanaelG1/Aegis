@@ -1,12 +1,11 @@
 # Composed fixed-canary delivery milestone
 
-**9 October 2026 — composition contract; integrated source and test evidence
-pending. Live use remains NO-GO.** This milestone joins the bounded canary import,
+**9 October 2026 — implemented fixed-canary composition. Live use remains
+NO-GO.** This milestone joins the bounded canary import,
 mutually authenticated TLS protocol and separate recipient process in one
-executable flow. It must deliver the bytes from the committed import through the
-existing durable broker, rather than run three drills or regenerate a store
-fixture with the same value. Until the exact-source evidence below is recorded,
-this document specifies acceptance requirements, not a claim that they passed.
+executable flow. It delivers the bytes from the committed import through the
+existing durable broker. The exact-source evidence below distinguishes the
+observed composed path, focused failure tests and remaining deployment gaps.
 
 The input remains a compiled-in disposable canary. No real value, GitHub App key,
 installation token, endpoint, recipient executable, credential reader or
@@ -17,7 +16,7 @@ the live-use gate.
 
 ## One composed path
 
-The candidate interface is the Unix `vault-spike` function
+The interface is the Unix `vault-spike` function
 `vault::composed::run_synthetic_composed_drill(&Path)` and the fixed
 `aegis-composed-canary <new-absolute-root>` binary. The root is disposable fixture
 storage, with `custody`, `input`, `vault` and `recipient` children; it is not an
@@ -76,9 +75,9 @@ standalone process drill's version-two rotation is separate evidence.
 
 ## Meaning and limits of a successful run
 
-A passing composed CLI test would establish exercised dataflow, protocol
-authorization and retained functional outcomes for one disposable input. It
-would not establish a protected human-to-application service. The development
+A passing composed CLI test establishes exercised dataflow, protocol
+authorization and retained functional outcomes for one disposable input. A
+protected human-to-application service remains unavailable. The development
 recipient remains **UNISOLATED**: a separate process running under the same UID
 and host control plane does not exclude memory, `/proc`, tracing, file,
 descriptor, executable/configuration or recovery access by that account.
@@ -181,25 +180,25 @@ interface.
 ## Exact-source evidence ledger
 
 Starting source: `0ab8a1ac9a385ed7d9fff4b6f5c6efa0727e3303`, the separate-mechanism
-checkpoint. Its earlier results do not cover this composition. Replace pending
-entries only with observed results for the identified integrated candidate;
-keep blocked, failed and never-run checks distinct. The
-[verification record](verification.md) owns final source hashes, commands,
-counts, environment/lockfile provenance and CI links.
+checkpoint. The integrated runtime/tests are
+`cbcfa1ea110bd62ec6ad17a5de5066fa294ea407`; subsequent documentation does not
+change that tested code. The [verification record](verification.md) gives
+commands, counts, platform limits and prior CI provenance. The new draft PR
+records the exact published head and its hosted CI result.
 
 | Evidence | Current state |
 | --- | --- |
-| Integrated composed runtime source/commit and final public API | Pending integration; candidate interface described above |
-| Actual imported ciphertext and metadata binding through durable reserve to child receipt | Pending final source inspection and focused runtime tests |
-| CLI success, bounded safe report, no-clobber, argument/default refusal and child cleanup | Pending `tests/composed_canary.rs` integration and execution |
-| Cold reopen, zero restored sessions, fresh authentication and durable revoke | Pending composed CLI/runtime evidence; earlier separate-drill results are not substituted |
-| Import/transport/receipt failures, consumed uncertainty and no fallback/retry | Pending focused composition tests; record exact test names and outcomes |
-| Default/all-feature all-target tests, doctests, formatting, Clippy and rustdoc | Pending exact integrated candidate checks; prior local listener restrictions remain a verification limit until actually run elsewhere |
-| Hosted Linux CI | Pending exact candidate SHA and terminal run result |
+| Integrated runtime and API | Implemented; `run_synthetic_composed_drill(&Path)` and `inspect_synthetic_composed(&Path)` accept only fixture paths |
+| Actual ciphertext and authority bindings | Passed focused library tests for exact committed bytes and vault/storage/writer/recipient/receipt-key, reference/version, profile/slot, generation and metadata binding; legacy store shape retained |
+| Actual TLS-driven child delivery | Passed independent CLI test: two control roles, one delivery/use, generation one, three remaining uses, duplicate reuse and durable revoke |
+| Safe report, no-clobber, arguments/default refusal and cleanup | 6 all-feature and 2 default CLI tests passed; bounded outputs, tested marker absence and Linux root-scoped child observations only |
+| Cold state and missing/corrupt artifacts | Fresh-process inspect passed without file changes or restored sessions; missing/corrupt input/store ciphertext refused without mutation |
+| Failure and uncertainty | Import failures retain their one-shot consumption; invalid stored bytes detected before reservation cause no use/handoff. Imported-record acknowledgement loss uses an in-process recipient fault and retains consumed uncertainty with cold `ReconciliationRequired`; full TLS/child fault injection remains untested |
+| Aggregate tests and quality | 300 library tests, 1/27 doctests and quality checks passed. Full local default/all-feature runs: 158/406 passes plus the unchanged 14 restricted listener failures each, zero ignored |
+| Hosted Linux CI | Reported for the exact published SHA on the accompanying draft PR; this ledger records pre-publication local checks and does not substitute earlier passes |
 | Operator-owned deployment and independent assurance | Not established; live use remains NO-GO |
 
-Planned acceptance commands, once the composed source and test target are
-integrated, are:
+Acceptance commands are:
 
 ```sh
 cargo test --locked --offline --test composed_canary
@@ -209,7 +208,15 @@ cargo test --locked --offline --doc
 cargo test --locked --offline --all-features --doc
 ```
 
-The CLI must also be exercised directly against a new absolute root; the final
-command, observed report fields and any read-only inspect mode must be verified
-against the implemented interface before being recorded as executable guidance.
-These checks supply functional evidence only and make no host-assurance claim.
+The CLI and fresh-process inspection were also exercised directly. Reproduce
+with a new absolute destination:
+
+```sh
+cargo run --locked --offline --all-features --bin aegis-composed-canary -- /tmp/aegis-composed-new
+cargo run --locked --offline --all-features --bin aegis-composed-canary -- inspect /tmp/aegis-composed-new
+```
+
+Inspection starts a fresh recipient child to validate its journal and signed
+nonce-bound status. It appends no records and restores no authority; this does
+not claim read-only OS permissions or absence of private in-memory work. These
+checks supply functional evidence only and make no host-assurance claim.
