@@ -1,0 +1,729 @@
+use super::*;
+use std::{
+    os::unix::fs::symlink,
+    panic::{catch_unwind, AssertUnwindSafe},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Barrier,
+    },
+    thread,
+};
+
+static NEXT: AtomicUsize = AtomicUsize::new(0);
+struct Harness {
+    root: PathBuf,
+    clock: Arc<ManualClock>,
+    ceremony: Ceremony,
+    identity: Identity,
+}
+impl Harness {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "aegis-protected-entry-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        ));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let clock = Arc::new(ManualClock::default());
+        let ceremony = Ceremony::fixture(clock.clone()).unwrap();
+        Self {
+            root: root.canonicalize().unwrap(),
+            clock,
+            ceremony,
+            identity: Identity::generate(),
+        }
+    }
+    fn destination(&self) -> PathBuf {
+        self.root.join("import")
+    }
+    fn session(&self) -> ImportSession<'_> {
+        ImportSession::fixture(&self.ceremony, &self.destination(), &self.identity).unwrap()
+    }
+}
+impl Drop for Harness {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+fn approve(session: &ImportSession<'_>) {
+    session
+        .approve(&session.review.entry.bindings.operator, &session.review)
+        .unwrap();
+}
+fn import(session: &ImportSession<'_>, identity: &Identity, fault: Fault) -> Result<(), ErrorCode> {
+    session.import(
+        &mut Cursor::new(&fixture_frame().0),
+        &session.review,
+        identity,
+        fault,
+    )
+}
+fn assert_no_plaintext(bytes: &[u8]) {
+    assert!(!bytes.windows(CANARY.len()).any(|window| window == CANARY));
+}
+fn frame(bytes: &[u8]) -> PrivateBytes {
+    let mut result = PrivateBytes(Vec::with_capacity(12 + bytes.len()));
+    result.0.extend_from_slice(INPUT_MAGIC);
+    result
+        .0
+        .extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+    result.0.extend_from_slice(bytes);
+    result
+}
+struct Reader<F>(F);
+impl<F: FnMut(&mut [u8]) -> io::Result<usize>> Read for Reader<F> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.0(buffer)
+    }
+}
+
+#[test]
+fn metadata_fits_the_bounded_envelope() {
+    let h = Harness::new();
+    let session = h.session();
+    let size = serde_json::to_vec(&session.review).unwrap().len();
+    assert!(size <= MAX_METADATA, "metadata size: {size}");
+    let input = Input::read(&mut Cursor::new(&fixture_frame().0), || Ok(())).unwrap();
+    assert!(envelope(&session.review, &input).unwrap().0.len() <= crypto::MAX_CLEAR);
+}
+
+#[test]
+fn public_drill_has_closed_safe_results_and_only_ciphertext_on_disk() {
+    let h = Harness::new();
+    let report = run_synthetic_protected_entry_drill(&h.destination()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&report).unwrap(),
+        serde_json::json!({
+            "synthetic_only": true,
+            "maximum_reader_payload_bytes": 4096,
+            "fixed_import_payload_bytes": CANARY.len(),
+            "encrypted_fixture_imported": true,
+            "exact_metadata_round_trip": true,
+            "repeated_import": "budget_exhausted",
+            "cancellation": "request_canceled",
+            "trailing_input": "invalid_request",
+            "plaintext_in_persisted_fixture": false,
+            "plaintext_in_report": false,
+            "authenticated_human_verified": false,
+            "protected_display_verified": false,
+            "protected_custody_verified": false,
+            "operational_recovery_verified": false,
+            "ready_for_real_keys": false
+        })
+    );
+    assert_no_plaintext(&serde_json::to_vec(&report).unwrap());
+    assert_no_plaintext(format!("{report:?}").as_bytes());
+    let files: Vec<_> = fs::read_dir(h.destination())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert_eq!(files, [COMMITTED]);
+    let bytes = fs::read(h.destination().join(COMMITTED)).unwrap();
+    assert_no_plaintext(&bytes);
+    assert!(bytes.starts_with(b"age-encryption.org/v1"));
+    assert_eq!(
+        crate::vault::require_live_deployment(),
+        Err(ErrorCode::UnsupportedDeployment)
+    );
+    // Fresh process/session authority cannot reuse a committed destination.
+    assert_eq!(
+        run_synthetic_protected_entry_drill(&h.destination()),
+        Err(ErrorCode::PersistenceUnavailable)
+    );
+    assert_eq!(fs::read(h.destination().join(COMMITTED)).unwrap(), bytes);
+}
+
+#[test]
+fn decrypted_envelope_retains_the_complete_exact_review_and_length_delimited_canary() {
+    let h = Harness::new();
+    let session = h.session();
+    approve(&session);
+    import(&session, &h.identity, Fault::None).unwrap();
+    let ciphertext = fs::read(h.destination().join(COMMITTED)).unwrap();
+    let plaintext = h.identity.decrypt(&ciphertext).unwrap();
+    assert_eq!(&plaintext.0[..8], ENVELOPE_MAGIC);
+    let metadata_len = u32::from_be_bytes(plaintext.0[8..12].try_into().unwrap()) as usize;
+    let encoded_review: serde_json::Value =
+        serde_json::from_slice(&plaintext.0[12..12 + metadata_len]).unwrap();
+    assert_eq!(
+        encoded_review,
+        serde_json::to_value(&session.review).unwrap()
+    );
+    let offset = 12 + metadata_len;
+    let value_len =
+        u32::from_be_bytes(plaintext.0[offset..offset + 4].try_into().unwrap()) as usize;
+    assert_eq!(value_len, CANARY.len());
+    assert_eq!(&plaintext.0[offset + 4..], CANARY);
+    assert_eq!(
+        Identity::generate().decrypt(&ciphertext).err(),
+        Some(ErrorCode::InvalidRequest)
+    );
+    let mut damaged = ciphertext;
+    *damaged.last_mut().unwrap() ^= 1;
+    assert_eq!(
+        h.identity.decrypt(&damaged).err(),
+        Some(ErrorCode::InvalidRequest)
+    );
+}
+
+#[test]
+fn input_accepts_exact_maximum_and_chunked_bytes_without_text_conversion() {
+    let bytes: Vec<_> = (0..MAX_INPUT).map(|i| (i % 256) as u8).collect();
+    let framed = frame(&bytes);
+    let mut cursor = Cursor::new(&framed.0);
+    let mut attempts = 0;
+    let mut reader = Reader(|buffer: &mut [u8]| {
+        attempts += 1;
+        if attempts % 2 == 0 {
+            return Err(io::ErrorKind::Interrupted.into());
+        }
+        cursor.read(&mut buffer[..1])
+    });
+    let input = Input::read(&mut reader, || Ok(())).unwrap();
+    assert_eq!(input.len, MAX_INPUT);
+    assert_eq!(&input.bytes[..], &bytes);
+}
+
+#[test]
+fn envelope_rejects_metadata_total_size_and_arithmetic_overflow_before_copying() {
+    let h = Harness::new();
+    let session = h.session();
+    let input = Input::read(&mut Cursor::new(&fixture_frame().0), || Ok(())).unwrap();
+    let mut oversized = session.review.clone();
+    oversized.storage_recipient = "x".repeat(MAX_METADATA);
+    assert_eq!(
+        envelope(&oversized, &input).err(),
+        Some(ErrorCode::CapacityExceeded)
+    );
+    let maximum_input = Input {
+        bytes: Zeroizing::new([0; MAX_INPUT]),
+        len: MAX_INPUT,
+    };
+    // The reader bound does not promise that an arbitrary payload can fit beside
+    // this complete fixture review, nor authorize importing anything but CANARY.
+    assert_eq!(
+        envelope(&session.review, &maximum_input).err(),
+        Some(ErrorCode::CapacityExceeded)
+    );
+    let impossible_input = Input {
+        bytes: Zeroizing::new([0; MAX_INPUT]),
+        len: usize::MAX,
+    };
+    assert_eq!(
+        envelope(&session.review, &impossible_input).err(),
+        Some(ErrorCode::CapacityExceeded)
+    );
+}
+
+#[test]
+fn zero_length_bad_magic_all_truncations_and_trailing_input_are_rejected() {
+    let good = fixture_frame();
+    for end in 0..good.0.len() {
+        assert_eq!(
+            Input::read(&mut Cursor::new(&good.0[..end]), || Ok(())).err(),
+            Some(ErrorCode::InvalidRequest)
+        );
+    }
+    let mut malformed = vec![
+        frame(&[]),
+        fixture_frame(),
+        fixture_frame(),
+        fixture_frame(),
+    ];
+    malformed[1].0[0] ^= 1;
+    malformed[2].0.push(0);
+    malformed[3].0.extend_from_slice(&good.0);
+    for bytes in malformed {
+        assert_eq!(
+            Input::read(&mut Cursor::new(bytes.0.as_slice()), || Ok(())).err(),
+            Some(ErrorCode::InvalidRequest)
+        );
+    }
+}
+
+#[test]
+fn oversized_length_is_rejected_before_requesting_any_payload() {
+    for length in [MAX_INPUT as u32 + 1, u32::MAX] {
+        let mut header = [0u8; 12];
+        header[..8].copy_from_slice(INPUT_MAGIC);
+        header[8..].copy_from_slice(&length.to_be_bytes());
+        let mut reads = 0;
+        let mut reader = Reader(|buffer: &mut [u8]| {
+            reads += 1;
+            assert_eq!(reads, 1);
+            buffer.copy_from_slice(&header);
+            Ok(header.len())
+        });
+        assert_eq!(
+            Input::read(&mut reader, || Ok(())).err(),
+            Some(ErrorCode::CapacityExceeded)
+        );
+    }
+}
+
+#[test]
+fn errors_impossible_read_counts_and_interrupted_loops_are_bounded_and_sanitized() {
+    let mut attempts = 0;
+    let mut reader = Reader(|_: &mut [u8]| {
+        attempts += 1;
+        Err(io::Error::new(
+            io::ErrorKind::Interrupted,
+            "private diagnostic",
+        ))
+    });
+    assert_eq!(
+        Input::read(&mut reader, || Ok(())).err(),
+        Some(ErrorCode::CapacityExceeded)
+    );
+    assert_eq!(attempts, MAX_INPUT * 2 + 64);
+    let mut error = Reader(|_: &mut [u8]| Err(io::Error::other("private diagnostic")));
+    assert_eq!(
+        Input::read(&mut error, || Ok(())).err(),
+        Some(ErrorCode::InvalidRequest)
+    );
+    let mut impossible = Reader(|buffer: &mut [u8]| Ok(buffer.len() + 1));
+    assert_eq!(
+        Input::read(&mut impossible, || Ok(())).err(),
+        Some(ErrorCode::InvalidRequest)
+    );
+}
+
+#[test]
+fn failed_reads_noncanary_input_and_panics_consume_authority_without_files() {
+    for kind in 0..4 {
+        let h = Harness::new();
+        let session = h.session();
+        approve(&session);
+        if kind == 3 {
+            let mut reader =
+                Reader(|_: &mut [u8]| -> io::Result<usize> { panic!("synthetic read failure") });
+            assert!(catch_unwind(AssertUnwindSafe(|| session.import(
+                &mut reader,
+                &session.review,
+                &h.identity,
+                Fault::None
+            )))
+            .is_err());
+        } else {
+            let mut bytes = fixture_frame();
+            let expected = match kind {
+                0 => {
+                    bytes.0.truncate(15);
+                    ErrorCode::InvalidRequest
+                }
+                1 => {
+                    bytes.0.push(0);
+                    ErrorCode::InvalidRequest
+                }
+                _ => {
+                    bytes.0[12] ^= 1;
+                    ErrorCode::ScopeDenied
+                }
+            };
+            assert_eq!(
+                session.import(
+                    &mut Cursor::new(&bytes.0),
+                    &session.review,
+                    &h.identity,
+                    Fault::None
+                ),
+                Err(expected)
+            );
+        }
+        assert_eq!(
+            import(&session, &h.identity, Fault::None),
+            Err(ErrorCode::BudgetExhausted)
+        );
+        assert!(!h.destination().exists());
+        assert!(session.lock().unwrap().reservation.is_none());
+    }
+}
+
+#[test]
+fn frozen_metadata_changes_latch_failure_before_any_input_or_filesystem_effect() {
+    let mutations: &[fn(&mut ImportReview)] = &[
+        |r| r.destination.push("elsewhere"),
+        |r| r.storage_recipient.push('x'),
+        |r| r.input_contract += 1,
+        |r| r.maximum_input_bytes += 1,
+        |r| r.entry.instance[0] ^= 1,
+        |r| r.entry.expires_at += 1,
+        |r| r.entry.canary_use_limit += 1,
+        |r| r.entry.bindings.artifact_digest[0] ^= 1,
+        |r| r.entry.bindings.configuration_digest[0] ^= 1,
+        |r| r.entry.bindings.acl_revision += 1,
+        |r| r.entry.bindings.operator.enrollment_revision += 1,
+        |r| r.entry.bindings.recipient.verification_key_digest[0] ^= 1,
+        |r| r.entry.bindings.secret_version += 1,
+        |r| r.entry.bindings.recipient_generation += 1,
+        |r| r.entry.receipts[0].bindings.endpoint_digest[0] ^= 1,
+        |r| r.entry.receipts[1].instance[0] ^= 1,
+        |r| r.entry.receipts[2].observed_at += 1,
+        |r| r.entry.receipts[3].observer.principal = "another-actor",
+        |r| r.entry.receipts[4].expires_at -= 1,
+    ];
+    for mutate in mutations {
+        for after_approval in [false, true] {
+            let h = Harness::new();
+            let session = h.session();
+            let mut changed = session.review.clone();
+            mutate(&mut changed);
+            if after_approval {
+                approve(&session);
+                let mut reader =
+                    Reader(|_: &mut [u8]| -> io::Result<usize> { panic!("must not read") });
+                assert_eq!(
+                    session.import(&mut reader, &changed, &h.identity, Fault::None),
+                    Err(ErrorCode::PolicyChanged)
+                );
+            } else {
+                assert_eq!(
+                    session.approve(&h.ceremony.bindings.operator, &changed),
+                    Err(ErrorCode::PolicyChanged)
+                );
+            }
+            assert_eq!(
+                session.approve(&h.ceremony.bindings.operator, &session.review),
+                Err(ErrorCode::BudgetExhausted)
+            );
+            assert_eq!(
+                import(&session, &h.identity, Fault::None),
+                Err(ErrorCode::BudgetExhausted)
+            );
+            assert!(!h.destination().exists());
+        }
+    }
+}
+
+#[test]
+fn actor_checks_and_approval_cannot_be_skipped() {
+    let h = Harness::new();
+    let session = h.session();
+    let mut reader = Reader(|_: &mut [u8]| -> io::Result<usize> { panic!("must not read") });
+    assert_eq!(
+        session.import(&mut reader, &session.review, &h.identity, Fault::None),
+        Err(ErrorCode::ApprovalRequired)
+    );
+    assert_eq!(
+        session.approve(&h.ceremony.bindings.agent, &session.review),
+        Err(ErrorCode::AuthenticationRequired)
+    );
+    assert_eq!(
+        session.cancel(&h.ceremony.bindings.agent),
+        Err(ErrorCode::AuthenticationRequired)
+    );
+    approve(&session);
+    assert_eq!(
+        session.approve(&h.ceremony.bindings.operator, &session.review),
+        Err(ErrorCode::BudgetExhausted)
+    );
+    import(&session, &h.identity, Fault::None).unwrap();
+    assert_eq!(
+        session.cancel(&h.ceremony.bindings.operator),
+        Err(ErrorCode::BudgetExhausted)
+    );
+}
+
+#[test]
+fn a_different_ephemeral_identity_is_denied_before_read_and_consumes_the_permit() {
+    let h = Harness::new();
+    let session = h.session();
+    approve(&session);
+    let mut reader = Reader(|_: &mut [u8]| -> io::Result<usize> { panic!("must not read") });
+    assert_eq!(
+        session.import(
+            &mut reader,
+            &session.review,
+            &Identity::generate(),
+            Fault::None
+        ),
+        Err(ErrorCode::PolicyChanged)
+    );
+    assert_eq!(
+        import(&session, &h.identity, Fault::None),
+        Err(ErrorCode::BudgetExhausted)
+    );
+    assert!(!h.destination().exists());
+}
+
+#[test]
+fn cancel_before_approval_after_approval_or_during_input_never_publishes() {
+    for point in 0..3 {
+        let h = Harness::new();
+        let session = h.session();
+        if point > 0 {
+            approve(&session);
+        }
+        if point == 2 {
+            let bytes = fixture_frame();
+            let mut cursor = Cursor::new(&bytes.0);
+            let mut reads = 0;
+            let mut reader = Reader(|buffer: &mut [u8]| {
+                let n = cursor.read(buffer)?;
+                reads += 1;
+                if reads == 2 {
+                    session.cancel(&h.ceremony.bindings.operator).unwrap();
+                }
+                Ok(n)
+            });
+            assert_eq!(
+                session.import(&mut reader, &session.review, &h.identity, Fault::None),
+                Err(ErrorCode::RequestCanceled)
+            );
+        } else {
+            session.cancel(&h.ceremony.bindings.operator).unwrap();
+        }
+        assert_eq!(
+            import(&session, &h.identity, Fault::None),
+            Err(ErrorCode::RequestCanceled)
+        );
+        assert_eq!(
+            session.approve(&h.ceremony.bindings.operator, &session.review),
+            Err(ErrorCode::BudgetExhausted)
+        );
+        assert!(session.lock().unwrap().reservation.is_none());
+        assert!(!h.destination().exists());
+    }
+}
+
+#[test]
+fn deadline_and_clock_regression_during_read_latch_failure() {
+    for regression in [false, true] {
+        let h = Harness::new();
+        let session = h.session();
+        h.clock.set(10);
+        approve(&session);
+        let bytes = fixture_frame();
+        let mut cursor = Cursor::new(&bytes.0);
+        let mut reader = Reader(|buffer: &mut [u8]| {
+            let n = cursor.read(buffer)?;
+            h.clock.set(if regression {
+                9
+            } else {
+                session.review.entry.expires_at
+            });
+            Ok(n)
+        });
+        let error = if regression {
+            ErrorCode::SessionExpired
+        } else {
+            ErrorCode::RequestExpired
+        };
+        assert_eq!(
+            session.import(&mut reader, &session.review, &h.identity, Fault::None),
+            Err(error)
+        );
+        h.clock.set(10);
+        assert_eq!(
+            import(&session, &h.identity, Fault::None),
+            Err(ErrorCode::BudgetExhausted)
+        );
+        assert!(!h.destination().exists());
+    }
+}
+
+#[test]
+fn publication_faults_preserve_consumption_and_report_cleanup_or_uncertainty() {
+    for fault in [
+        Fault::PartialWrite,
+        Fault::BeforePublish,
+        Fault::AfterPublish,
+        Fault::Cleanup,
+    ] {
+        let h = Harness::new();
+        let session = h.session();
+        approve(&session);
+        let expected = if matches!(fault, Fault::AfterPublish | Fault::Cleanup) {
+            ErrorCode::ReconciliationRequired
+        } else {
+            ErrorCode::PersistenceUnavailable
+        };
+        assert_eq!(import(&session, &h.identity, fault), Err(expected));
+        assert_eq!(
+            import(&session, &h.identity, Fault::None),
+            Err(ErrorCode::BudgetExhausted)
+        );
+        match fault {
+            Fault::AfterPublish => {
+                assert!(session.lock().unwrap().phase == Phase::Uncertain);
+                assert!(h.destination().join(COMMITTED).exists());
+                for entry in fs::read_dir(h.destination()).unwrap() {
+                    assert_no_plaintext(&fs::read(entry.unwrap().path()).unwrap());
+                }
+            }
+            Fault::Cleanup => {
+                assert_eq!(
+                    fs::read(h.destination().join("unexpected")).unwrap(),
+                    b"nonsecret fixture"
+                );
+                assert!(!h.destination().join(STAGED).exists());
+                assert!(!h.destination().join(COMMITTED).exists());
+            }
+            _ => assert!(!h.destination().exists()),
+        }
+    }
+}
+
+#[test]
+fn existing_destinations_are_never_overwritten_even_when_empty() {
+    for as_directory in [false, true] {
+        let h = Harness::new();
+        if as_directory {
+            fs::create_dir(h.destination()).unwrap();
+        } else {
+            fs::write(h.destination(), b"existing fixture").unwrap();
+        }
+        let session = h.session();
+        approve(&session);
+        assert_eq!(
+            import(&session, &h.identity, Fault::None),
+            Err(ErrorCode::PersistenceUnavailable)
+        );
+        if as_directory {
+            assert_eq!(fs::read_dir(h.destination()).unwrap().count(), 0);
+        } else {
+            assert_eq!(fs::read(h.destination()).unwrap(), b"existing fixture");
+        }
+    }
+}
+
+#[test]
+fn publication_and_cleanup_never_clobber_unexpected_objects() {
+    let h = Harness::new();
+    let mut transaction =
+        Transaction::stage(&h.destination(), b"synthetic ciphertext", Fault::None).unwrap();
+    fs::write(h.destination().join(COMMITTED), b"existing record").unwrap();
+    assert_eq!(
+        transaction.publish(Fault::None),
+        Err(ErrorCode::PersistenceUnavailable)
+    );
+    assert_eq!(
+        transaction.abort(ErrorCode::PersistenceUnavailable),
+        Err(ErrorCode::ReconciliationRequired)
+    );
+    drop(transaction);
+    assert_eq!(
+        fs::read(h.destination().join(COMMITTED)).unwrap(),
+        b"existing record"
+    );
+    assert!(!h.destination().join(STAGED).exists());
+}
+
+#[test]
+fn unsafe_path_forms_and_existing_symlink_components_are_rejected() {
+    let h = Harness::new();
+    for path in [
+        PathBuf::from("relative"),
+        PathBuf::from("/"),
+        h.root.join("../other"),
+        PathBuf::from(format!("{}/./import", h.root.display())),
+        PathBuf::from(format!("{}//import", h.root.display())),
+        PathBuf::from(format!("{}/import/", h.root.display())),
+        h.root.join("x".repeat(1025)),
+    ] {
+        assert_eq!(validate_destination(&path), Err(ErrorCode::InvalidRequest));
+    }
+    let target = h.root.join("target");
+    fs::create_dir(&target).unwrap();
+    let link = h.root.join("link");
+    symlink(&target, &link).unwrap();
+    assert_eq!(validate_destination(&link), Err(ErrorCode::InvalidRequest));
+    assert_eq!(
+        validate_destination(&link.join("child")),
+        Err(ErrorCode::InvalidRequest)
+    );
+    let dangling = h.root.join("dangling");
+    symlink(h.root.join("absent"), &dangling).unwrap();
+    assert_eq!(
+        validate_destination(&dangling),
+        Err(ErrorCode::InvalidRequest)
+    );
+}
+
+#[test]
+fn dropping_an_unpublished_transaction_cleans_only_its_owned_staging_object() {
+    let h = Harness::new();
+    let transaction =
+        Transaction::stage(&h.destination(), b"synthetic ciphertext", Fault::None).unwrap();
+    assert!(h.destination().join(STAGED).exists());
+    drop(transaction);
+    assert!(!h.destination().exists());
+    let transaction =
+        Transaction::stage(&h.destination(), b"synthetic ciphertext", Fault::None).unwrap();
+    // Hold the old inode through the open file while replacing its path.
+    fs::remove_file(h.destination().join(STAGED)).unwrap();
+    fs::write(h.destination().join(STAGED), b"replacement fixture").unwrap();
+    drop(transaction);
+    assert_eq!(
+        fs::read(h.destination().join(STAGED)).unwrap(),
+        b"replacement fixture"
+    );
+}
+
+#[test]
+fn dropping_approval_does_not_refund_the_ceremony_reservation() {
+    let h = Harness::new();
+    let session = h.session();
+    approve(&session);
+    let review = session.review.entry.clone();
+    drop(session);
+    assert_eq!(
+        h.ceremony.reserve(&h.ceremony.bindings, &review).err(),
+        Some(ErrorCode::BudgetExhausted)
+    );
+    assert!(!h.destination().exists());
+}
+
+#[test]
+fn racing_imports_consume_only_one_permit() {
+    let h = Harness::new();
+    let session = h.session();
+    approve(&session);
+    let barrier = Barrier::new(2);
+    let results = thread::scope(|scope| {
+        let a = scope.spawn(|| {
+            barrier.wait();
+            import(&session, &h.identity, Fault::None)
+        });
+        let b = scope.spawn(|| {
+            barrier.wait();
+            import(&session, &h.identity, Fault::None)
+        });
+        [a.join().unwrap(), b.join().unwrap()]
+    });
+    assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
+    assert!(results.contains(&Err(ErrorCode::BudgetExhausted)));
+    assert!(verified_fixture(&session.review, &h.identity).unwrap());
+}
+
+#[test]
+fn racing_cancel_and_publish_have_one_serialized_outcome() {
+    for _ in 0..8 {
+        let h = Harness::new();
+        let session = h.session();
+        approve(&session);
+        let barrier = Barrier::new(2);
+        let (imported, canceled) = thread::scope(|scope| {
+            let a = scope.spawn(|| {
+                barrier.wait();
+                import(&session, &h.identity, Fault::None)
+            });
+            let b = scope.spawn(|| {
+                barrier.wait();
+                session.cancel(&h.ceremony.bindings.operator)
+            });
+            (a.join().unwrap(), b.join().unwrap())
+        });
+        match imported {
+            Ok(()) => {
+                assert_eq!(canceled, Err(ErrorCode::BudgetExhausted));
+                assert!(verified_fixture(&session.review, &h.identity).unwrap());
+            }
+            Err(ErrorCode::RequestCanceled) => {
+                assert_eq!(canceled, Ok(()));
+                assert!(!h.destination().exists());
+            }
+            other => panic!("unexpected safe status: {other:?}"),
+        }
+    }
+}
