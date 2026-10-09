@@ -64,7 +64,16 @@ Direct new dependencies are pinned exactly to Rustls `0.23.45` (`std`, `aws_lc_r
 
 The official Rustls advisory [GHSA-2mjx-qc3c-rqvc](https://github.com/rustls/rustls/security/advisories/GHSA-2mjx-qc3c-rqvc), checked on 2026-10-09, lists `0.23.13`–`0.23.44` as affected by accepting TLS 1.3 handshake messages at incorrect encryption levels and `0.23.45` as patched. This is why the implementation pins `0.23.45`. It is not a claim that this graph has no other advisories. The [Rustls 0.23.45 API](https://docs.rs/rustls/0.23.45/rustls/) and [exporter/I/O documentation](https://docs.rs/rustls/0.23.45/rustls/struct.ConnectionCommon.html) are the implementation references. rcgen APIs were checked against the exact downloaded `0.14.10` package source and its Cargo feature manifest.
 
-`Cargo.lock` adds 38 resolved package entries and does not update or remove any previous package version. Its optional/target resolution also records packages absent from the exercised Linux compilation, including `ring` and `x509-parser`; their presence in the lockfile is not evidence that their features compiled. No OS trust store, system TLS library, FIPS mode or platform certification is implied. Rustls/WebPKI, rcgen/time/ASN.1 generation and the AWS-LC/native toolchain remain dependency and provenance review obligations. The lockfile SHA-256 for this slice is `90e27be2374c74135cd31fe1285db74bdd264d62b64673b217080989ca9de55b`. The pinned graph and advisory check are not a dependency audit, signed release, SBOM refresh or first-install verification.
+`Cargo.lock` adds 38 resolved package entries and does not update or remove any previous package version. Its optional/target resolution also records packages absent from the exercised Linux compilation, including `ring` and `x509-parser`; their presence in the lockfile is not evidence that their features compiled. No OS trust store, system TLS library, FIPS mode or platform certification is implied. Rustls/WebPKI, rcgen/time/ASN.1 generation and the AWS-LC/native toolchain remain dependency and provenance review obligations. The lockfile SHA-256 for this slice is `90e27be2374c74135cd31fe1285db74bdd264d62b64673b217080989ca9de55b`. The pinned graph and advisory check are not a dependency audit, signed release or first-install verification.
+
+The refreshed [Linux inventory](dependency-inventory-linux-tls.json) selects the
+normal/build/dev graph with [`cargo tree`](https://doc.rust-lang.org/cargo/commands/cargo-tree.html)
+and obtains declared license/source metadata from
+[`cargo metadata`](https://doc.rust-lang.org/cargo/commands/cargo-metadata.html).
+This corrects the earlier generator's inclusion of unused resolved packages.
+With the same selection method on both sources, default/storage/signing graphs
+are unchanged (19/127/39 package identities), while all features grow from 144
+to 156 identities. Graph selection is not an attestation of a packaged binary.
 
 ## Functional evidence and unchanged admission
 
