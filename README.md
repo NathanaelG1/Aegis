@@ -69,6 +69,25 @@ See [ADR 0018](docs/adr/0018-protected-mechanism-development.md),
 [ADR 0019](docs/adr/0019-composed-canary-delivery.md), and the
 [operator trial plan](docs/operator-live-trial-plan.md).
 
+## Broker process service milestone
+
+The [fixed-canary process service](docs/process-service.md) moves the broker and
+both TLS server endpoints into a child process. Separate simulated clients drive
+actual bounded Unix socket I/O; a supervisor owns and reaps the broker and fixed
+recipient children. The broker runtime loads neither client signing/TLS private
+keys nor recipient private keys. Duplicate, cold authentication, revoke and
+lost-response behavior retain the existing durable policy outcomes.
+
+```sh
+cargo run --locked --offline --all-features --bin aegis-process-service -- /tmp/aegis-service-new
+cargo run --locked --offline --all-features --bin aegis-process-service -- inspect /tmp/aegis-service-new
+```
+
+All processes still share the development UID and control plane. Bootstrap
+briefly owns all disposable keys, approvals remain simulated, and journal time
+remains fixed fixture time. There is no listener or protected operational entry;
+all live-key gates remain false. See [ADR 0020](docs/adr/0020-process-owned-dummy-broker-service.md).
+
 ## What is being built
 
 The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. Protected application delivery is an essential additional product requirement, not an optional plaintext-export convenience. Its [design contract](docs/application-delivery.md) specifies reference-only proposals, immutable human approval, recipient enrollment, safe status, revocation limits, and adversarial acceptance gates. The optional vault feature exercises delivery interfaces using fixed fixtures; production entry, external recipient integration and OS protections remain unimplemented or unverified. A useful live provider operation and an operational portable `age` backend also remain release work.
@@ -85,6 +104,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 | [Architecture](docs/architecture.md) | Component boundaries and current versus planned interfaces |
 | [Integrated synthetic vault](docs/vault-delivery-spike.md) | Encrypted canary delivery/rotation through authenticated core policy and durable recovery |
 | [Composed fixed-canary flow](docs/composed-canary-flow.md) | Actual encrypted import through TLS approval, durable broker and fixed child receipt; retained NO-GO gates |
+| [Fixed-canary broker process service](docs/process-service.md) | Owned broker/client TLS I/O, supervised children and real response-loss regressions |
 | [Operator-owned deployment](docs/operator-owned-deployment.md) | Required privilege separation, canary verification and later user key-entry ceremony |
 | [Application authentication and ACLs](docs/access-control.md) | Vendor-neutral identity/policy, optional private networking, proxy trust and acceptance gates |
 | [Readiness and deployment choices](docs/readiness-checklist.md) | Consolidated missing end-to-end gates, required permissions, verification plan and effort estimate |

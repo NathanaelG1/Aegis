@@ -2,6 +2,31 @@
 
 Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
+## Broker process service checkpoint (10 October 2026)
+
+The [fixed-canary process service](process-service.md) now drives actual bounded
+TLS socket I/O between simulated clients and a separate broker child. A common
+supervisor owns and reaps that broker and its fixed recipient child. Runtime
+broker custody excludes client signing/TLS private keys and recipient private
+keys. Actual imported ciphertext, exact approval, reservation, duplicate reuse,
+cold authentication and durable revoke follow the existing policy engine.
+
+Integrated local validation passed all 317 library tests, seven feature-enabled
+and two default CLI acceptance tests, 1/28 doctests, formatting, unrestricted
+Clippy and rustdoc. Default/all-feature aggregates produced 160/430 passes plus
+the unchanged 14 denied listener cases, with zero ignored tests. Exact-head
+hosted CI for this increment is pending publication; older green runs do not
+cover it. The [verification record](verification.md) describes both actual
+process reply-loss cases, child cleanup and their limits. Dependencies are
+unchanged.
+
+This remains UNISOLATED and dummy-only: same UID/control plane, simulated human
+approval, disposable bootstrap custody and fixed fixture journal time. An
+operational listener/admission policy, trusted time, protected input/custody,
+independent human client, immutable application slot, external rollback anchor,
+lifecycle/audit/provider adapters and required assurance remain open. All live
+readiness gates remain false.
+
 ## Composed canary checkpoint (9 October 2026)
 
 The [composed canary](composed-canary-flow.md) consumes the actual bounded
@@ -14,8 +39,9 @@ and two-version store remain available.
 Local integrated validation passed 300 library tests, 6 all-feature and 2
 default CLI acceptance tests, 1/27 doctests, formatting, Clippy and rustdoc.
 Full default/all-feature runs produced 158/406 passes plus the same 14 denied
-listener-dependent cases and zero ignored tests. Exact-head hosted CI is required for each published candidate and recorded on
-its draft PR; see [verification](verification.md). No dependencies changed.
+listener-dependent cases and zero ignored tests. Its later exact-head hosted
+CI passed all 172 default and 420 all-feature tests, including the listener
+cases; see [verification](verification.md). No dependencies changed.
 
 This is a fixed dummy-input flow. Its TLS peers and simulated human signers are
 controlled by the parent fixture; its child shares the development UID and
