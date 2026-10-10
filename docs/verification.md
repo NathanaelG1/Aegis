@@ -1,5 +1,78 @@
 # Verification and evidence
 
+## Two-import composed rotation checkpoint (2026-10-10)
+
+Local tested runtime and acceptance-test source:
+`bad85d10229cead45b523382ba22f6b7243ed02b`. This increment starts from verified
+PR #5 head `e6e973ec8cccd2c8127d91af160c1a6d48bca322`, tree
+`40c7d3f276847fc5a50a92002e6a3a77c2baa5e1` (local equivalent `de9bf78`), and is
+stacked on the fixed-application-slot branch. This records local validation
+before publication; the associated draft PR must supply exact-head hosted CI.
+Historical green runs do not cover this increment.
+
+Environment: Debian 13.6 Linux x86_64, kernel 6.18.44, official Rust/Cargo 1.96.1.
+Cargo.toml and Cargo.lock are byte-identical to PR #5. The lockfile SHA-256
+remains `b3f92fa557f916e1c29e56603012eae4931f3afca0090764b1ccefe06f4ce2bf`.
+No dependencies, feature definitions, toolchain or CI permissions changed.
+
+- All 338 all-feature library tests passed. Ten new cases include seven
+  protected-entry binding/closed-version checks, one cross-record independent
+  ceremony check and two process-rotation tests.
+- The full fixed composition consumes two independently reviewed encrypted
+  imports, preserves both exact ciphertexts in the signed manifest/store, and
+  delivers each version through authenticated broker TLS and the recipient
+  child to the fixed application file. Generation one and then two are verified
+  in fresh inspection processes. Frozen per-process profiles require fresh
+  authentication between versions and again for revoke; this is not a deployed
+  continuous rotation service.
+- Each version receives its own exact signed broker approval. Live duplicates
+  reuse their phase's result; stale handles after restart and a stale version-one
+  proposal in the second phase are denied. Signed outcomes and both consumed
+  uses survive restart; sessions, approvals and run handles do not. A separate
+  earlier recipient test directly replays an old capsule; the composed CLI does
+  not expose a generic replay route.
+- Five actual second-recipient exits preserve the first completion, two consumed
+  uses, two remaining uses and an unknown second broker delivery. Intent/stage
+  exits retain version one and completed generation one. Rename/directory-sync
+  exits observe version two while completed generation remains one with pending
+  intent. Completion-sync-before-reply retains generation two with an unknown
+  broker outcome. Inspection is unchanged and no retry/refund is authorized.
+  The held predecessor descriptor still reads version one after replacement.
+  These are process-exit cases, not power-loss or full storage-error coverage.
+- Public acceptance passed seven enabled rotation tests and all eight existing
+  slot tests under both application-slot and all-feature configurations.
+  Default and vault-only refusal each passed three rotation and three slot
+  tests. Tests independently observe both imported ciphertexts, final canary2,
+  correlated manifest/broker/installation tuples, retained revoke, missing,
+  corrupt, signature-only-tampered and mixed evidence refusal, bounded outputs,
+  unchanged read-only inspection and root-scoped Linux child cleanup. Tuple
+  decoding is not signature verification; fresh runtime inspection supplies
+  cryptographic envelope/signature and actual file validation.
+- Full default/all-feature all-target runs with no fail-fast produced 166/466
+  passes, each with exactly the prior 14 locally denied listener cases and zero
+  ignored tests. Failure names match the PR #5 checkpoint and permission errors
+  remain present. Both local aggregate commands therefore fail; clean hosted
+  Linux must supply the complete listener result. No assertion was removed,
+  weakened or skipped, and no new regression required a correction.
+- Default/all-feature doctests passed 1/28. Formatting, unrestricted
+  all-feature/all-target Clippy and rustdoc with warnings denied passed. Focused
+  default/vault-only Clippy and all-feature/all-target cargo check passed too.
+
+The [rotation contract](composed-canary-rotation.md) records exact focused
+source checkpoints and the crash table. The [operator decision guide](operator-decisions.md)
+asks for host/access, recipient installation, custody/unlock, independent human
+client and recovery/anchor choices before selecting operational adapters.
+Aegis cannot reduce authority supplied independently by other GitHub connectors
+or credentials; those routes need their own inventory and any later approvals.
+
+All processes and fixture material share the development UID/control plane;
+reports remain UNISOLATED. The file intentionally contains a public canary.
+Operational custody/entry, independent human identity, immutable isolated
+recipient identity/destination, external rollback anchor, trusted time and
+admission/lifecycle, live provider integration and permissible assurance remain
+open. Real-key entry unconditionally refuses. The previously stopped independent
+adversarial review was not resumed or replaced.
+
 ## Fixed application-slot checkpoint (2026-10-10)
 
 Local tested runtime and acceptance-test source:
