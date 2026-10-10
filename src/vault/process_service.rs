@@ -320,6 +320,7 @@ fn spawn_recipient_mode(
 
 struct ClientChannels {
     contract: ReceiptContract,
+    version: u64,
     agent: SocketClient,
     admin: SocketClient,
     agent_actor: ActorRole,
@@ -373,13 +374,21 @@ impl ClientChannels {
         Ok(response)
     }
     fn approve(&mut self) -> Result<Value, ErrorCode> {
+        let version = self.version;
+        let request_id = RequestId::new(if version == 1 {
+            "process-service-import-one"
+        } else {
+            "process-service-import-two"
+        })?;
         let prepared: OperationRunView = value(
             self.agent(
                 "prepare_operation",
                 OperationPrepareInput {
-                    request_id: RequestId::new("process-service-import-one")?,
+                    request_id: request_id.clone(),
                     profile_id: ProfileId::new("vault-delivery")?,
-                    operation: OperationIntent::Delivery(super::DeliveryParameters::fixture(1)),
+                    operation: OperationIntent::Delivery(super::DeliveryParameters::fixture(
+                        version,
+                    )),
                 },
             )?,
             "run",
@@ -393,8 +402,10 @@ impl ClientChannels {
             exchange(&mut self.admin, "inspect_review", &handle)?,
             "review",
         )?;
-        if expected.profile != self.contract.profile(1)
-            || expected.operation != super::DeliveryParameters::fixture(1)
+        if expected.profile != self.contract.profile(version)
+            || expected.operation != super::DeliveryParameters::fixture(version)
+            || expected.request_id != request_id
+            || expected.prepared != prepared.prepared_request_id
         {
             return Err(ErrorCode::PolicyChanged);
         }
@@ -477,6 +488,11 @@ fn recipient_mode(mode: &str, create: bool) -> &'static str {
             "slot-create-exit-rename" => return "slot-recipient-exit-rename",
             "slot-create-exit-directory" => return "slot-recipient-exit-directory",
             "slot-create-exit-receipt" => return "slot-recipient-exit-receipt",
+            "slot-rotation-two-exit-intent" => return "slot-rotation-recipient-exit-intent",
+            "slot-rotation-two-exit-stage" => return "slot-rotation-recipient-exit-stage",
+            "slot-rotation-two-exit-rename" => return "slot-rotation-recipient-exit-rename",
+            "slot-rotation-two-exit-directory" => return "slot-rotation-recipient-exit-directory",
+            "slot-rotation-two-exit-receipt" => return "slot-rotation-recipient-exit-receipt",
             _ => {}
         }
         return if create {
@@ -561,6 +577,11 @@ fn start_phase_mode(
         stream
     };
     let channels = ClientChannels {
+        version: if mode.starts_with("slot-rotation-two") || mode == "slot-rotation-open" {
+            2
+        } else {
+            1
+        },
         contract: {
             #[cfg(feature = "application-slot")]
             {
@@ -591,6 +612,17 @@ pub(super) fn inspect_contract(
     root: &Path,
     contract: ReceiptContract,
 ) -> Result<Observation, ErrorCode> {
+    inspect_fixture(root, contract, false)
+}
+#[cfg(feature = "application-slot")]
+pub(super) fn inspect_rotation(root: &Path) -> Result<Observation, ErrorCode> {
+    inspect_fixture(root, ReceiptContract::Installation, true)
+}
+fn inspect_fixture(
+    root: &Path,
+    contract: ReceiptContract,
+    rotation: bool,
+) -> Result<Observation, ErrorCode> {
     protected_entry::validate_destination(root)?;
     store::safe_directory(root)?;
     let deadline = Instant::now() + PROCESS_TIME;
@@ -598,8 +630,17 @@ pub(super) fn inspect_contract(
     let (recipient_mode, mode) = match contract {
         ReceiptContract::Acceptance => ("recipient-open", "inspect"),
         #[cfg(feature = "application-slot")]
-        ReceiptContract::Installation => ("slot-recipient-inspect", "slot-inspect"),
+        ReceiptContract::Installation => (
+            "slot-recipient-inspect",
+            if rotation {
+                "slot-rotation-inspect"
+            } else {
+                "slot-inspect"
+            },
+        ),
     };
+    #[cfg(not(feature = "application-slot"))]
+    let _ = rotation;
     let recipient = spawn_recipient_mode(root, recipient_mode, &mut supervisor)?;
     let (mut stream, output) = pair()?;
     supervisor.broker = Some(
@@ -736,24 +777,187 @@ pub fn inspect_synthetic_process_service(
     })
 }
 
+// The runtime freezes one exact profile per broker lifetime. Rotation deliberately
+// uses successive fresh broker phases over the same durable Store, never a
+// second authority or a mutable-profile command on the agent/admin protocol.
+#[cfg(feature = "application-slot")]
+pub(super) fn run_rotation(root: &Path) -> Result<ProcessServiceReport, ErrorCode> {
+    protected_entry::validate_destination(root)?;
+    store::new_directory(root)?;
+    let fixture = bootstrap(root)?;
+    let mut previous_invocation = None;
+    let mut transcript = false;
+    for (version, mode, create) in [
+        (1, "slot-rotation-create", true),
+        (2, "slot-rotation-two", false),
+    ] {
+        let (mut supervisor, mut channels, deadline) =
+            start_phase_mode(root, &fixture.vault_id, mode, create)?;
+        if channels.connect()? != (true, true) {
+            return Err(ErrorCode::AuthenticationRequired);
+        }
+        if let Some(previous) = &previous_invocation {
+            // Authentication is fresh, but the prior broker's run/approval is not
+            // restored. Reject before a new handle can have the same local ID.
+            if !is_error(
+                &channels.agent("invoke_approved", previous)?,
+                ErrorCode::NotFound,
+            ) {
+                return Err(ErrorCode::BrokerUnavailable);
+            }
+        }
+        let invocation = channels.approve()?;
+        let run: OperationRunView = value(channels.agent("invoke_approved", &invocation)?, "run")?;
+        let duplicate: OperationRunView =
+            value(channels.agent("invoke_approved", &invocation)?, "run")?;
+        let Some(crate::OperationResult::Delivery(projection)) = &run.result else {
+            return Err(ErrorCode::BrokerUnavailable);
+        };
+        if run.state != Lifecycle::Succeeded
+            || run != duplicate
+            || !projection.matches(
+                &RequestId::new(if version == 1 {
+                    "process-service-import-one"
+                } else {
+                    "process-service-import-two"
+                })?,
+                &super::DeliveryParameters::fixture(version),
+            )
+        {
+            return Err(ErrorCode::BrokerUnavailable);
+        }
+        if version == 2
+            && !is_error(
+                &channels.agent(
+                    "prepare_operation",
+                    OperationPrepareInput {
+                        request_id: RequestId::new("process-service-import-one")?,
+                        profile_id: ProfileId::new("vault-delivery")?,
+                        operation: OperationIntent::Delivery(super::DeliveryParameters::fixture(1)),
+                    },
+                )?,
+                ErrorCode::ScopeDenied,
+            )
+        {
+            return Err(ErrorCode::BrokerUnavailable);
+        }
+        previous_invocation = Some(invocation);
+        transcript |= channels.transcript_contains_canary;
+        channels.close()?;
+        drop(channels);
+        supervisor.finish(deadline)?;
+        // A new inspection process verifies both imported identities and the
+        // recipient's signed state after each phase, including the stale request.
+        let observed = inspect_rotation(root)?;
+        if observed.consumed != version as usize
+            || observed.remaining != 4 - version as u32
+            || observed.generation != version
+            || observed.installed_version != Some(version)
+            || observed.incomplete_installations != Some(0)
+            || observed.incomplete != 0
+            || observed.unknown != 0
+            || observed.revoked
+        {
+            return Err(ErrorCode::ReconciliationRequired);
+        }
+    }
+    let (mut supervisor, mut channels, deadline) =
+        start_phase_mode(root, &fixture.vault_id, "slot-rotation-open", false)?;
+    if channels.connect()? != (true, true) {
+        return Err(ErrorCode::AuthenticationRequired);
+    }
+    if !is_error(
+        &channels.agent(
+            "invoke_approved",
+            previous_invocation.ok_or(ErrorCode::BrokerUnavailable)?,
+        )?,
+        ErrorCode::NotFound,
+    ) {
+        return Err(ErrorCode::BrokerUnavailable);
+    }
+    channels.revoke()?;
+    transcript |= channels.transcript_contains_canary;
+    channels.close()?;
+    drop(channels);
+    supervisor.finish(deadline)?;
+    let observed = inspect_rotation(root)?;
+    if transcript
+        || observed.consumed != 2
+        || observed.remaining != 2
+        || observed.generation != 2
+        || observed.installed_version != Some(2)
+        || observed.incomplete_installations != Some(0)
+        || observed.incomplete != 0
+        || observed.unknown != 0
+        || !observed.revoked
+        || !observed.revoked_admission_denied
+        || super::require_live_deployment() != Err(ErrorCode::UnsupportedDeployment)
+    {
+        return Err(ErrorCode::ReconciliationRequired);
+    }
+    Ok(ProcessServiceReport {
+        synthetic_only: true,
+        input_import_bound: true,
+        authenticated_role_channels: 2,
+        tls13_mutual_authentication_verified: true,
+        separate_broker_process: true,
+        separate_recipient_process: true,
+        bootstrap_in_child: true,
+        client_signers_outside_broker: true,
+        broker_loaded_actor_private_keys: false,
+        broker_loaded_tls_client_private_keys: false,
+        broker_loaded_recipient_private_keys: false,
+        broker_and_recipient_reaped: true,
+        unauthenticated_agent_denied: true,
+        unauthenticated_admin_denied: true,
+        completed_deliveries: 2,
+        duplicate_reused: true,
+        cold_start_required_authentication: true,
+        consumed_uses: observed.consumed,
+        remaining_uses: observed.remaining,
+        recipient_generation: observed.generation,
+        revoked: observed.revoked,
+        revocation_survived_restart: observed.revoked_admission_denied,
+        agent_transcript_contains_canary: transcript,
+        restored_sessions: 0,
+        automatic_retry_allowed: false,
+        workflow_mode: "UNISOLATED",
+        independent_human_presence_verified: false,
+        protected_custody_verified: false,
+        protected_deployment_verified: false,
+        ready_for_real_keys: false,
+    })
+}
+
 fn broker_service(root: &Path, create: bool, contract: ReceiptContract) -> Result<(), ErrorCode> {
+    broker_service_fixture(root, create, contract, false, 1)
+}
+fn broker_service_fixture(
+    root: &Path,
+    create: bool,
+    contract: ReceiptContract,
+    rotation: bool,
+    version: u64,
+) -> Result<(), ErrorCode> {
     let broker = BrokerRole::open(&root.join("custody/broker"))?;
     let store = if create {
-        let imported = protected_entry::import_delivery_canary_contract(
-            &root.join("input"),
-            &broker.material,
-            contract,
-        )?;
-        Store::create_imported_contract(
-            &root.join("vault"),
-            broker.material.clone(),
-            imported,
-            contract,
-        )?
+        #[cfg(feature = "application-slot")]
+        if rotation {
+            let imports = protected_entry::import_delivery_rotation_canaries(
+                &root.join("input-1"),
+                &root.join("input-2"),
+                &broker.material,
+            )?;
+            Store::create_imported_rotation(&root.join("vault"), broker.material.clone(), imports)?
+        } else {
+            create_single_import(root, &broker, contract)?
+        }
+        #[cfg(not(feature = "application-slot"))]
+        create_single_import(root, &broker, contract)?
     } else {
         Store::open(&root.join("vault"), broker.material.clone())?
     };
-    store.check_imported_record(&root.join("input"))?;
+    check_imports(&store, root, rotation)?;
     if store.receipt_contract() != contract {
         return Err(ErrorCode::ReconciliationRequired);
     }
@@ -768,9 +972,38 @@ fn broker_service(root: &Path, create: bool, contract: ReceiptContract) -> Resul
         broker.enrollment,
         store,
         recipient,
-        1,
+        version,
         Arc::new(ManualClock::default()),
     )?;
+    serve_protocol(root, protocol)
+}
+fn create_single_import(
+    root: &Path,
+    broker: &BrokerRole,
+    contract: ReceiptContract,
+) -> Result<Arc<Store>, ErrorCode> {
+    let imported = protected_entry::import_delivery_canary_contract(
+        &root.join("input"),
+        &broker.material,
+        contract,
+    )?;
+    Store::create_imported_contract(
+        &root.join("vault"),
+        broker.material.clone(),
+        imported,
+        contract,
+    )
+}
+fn check_imports(store: &Store, root: &Path, rotation: bool) -> Result<(), ErrorCode> {
+    #[cfg(feature = "application-slot")]
+    if rotation {
+        return store.check_imported_rotation(&root.join("input-1"), &root.join("input-2"));
+    }
+    #[cfg(not(feature = "application-slot"))]
+    let _ = rotation;
+    store.check_imported_record(&root.join("input"))
+}
+fn serve_protocol(root: &Path, protocol: SyntheticProtocol) -> Result<(), ErrorCode> {
     let material = ServerMaterial::open(&root.join("tls/broker"))?;
     let agent_stream = inherited(std::io::stdin())?;
     let admin_stream = inherited(std::io::stdout())?;
@@ -818,9 +1051,16 @@ fn broker_service(root: &Path, create: bool, contract: ReceiptContract) -> Resul
     })
 }
 fn broker_inspect(root: &Path, contract: ReceiptContract) -> Result<(), ErrorCode> {
+    broker_inspect_fixture(root, contract, false)
+}
+fn broker_inspect_fixture(
+    root: &Path,
+    contract: ReceiptContract,
+    rotation: bool,
+) -> Result<(), ErrorCode> {
     let broker = BrokerRole::open(&root.join("custody/broker"))?;
     let store = Store::open(&root.join("vault"), broker.material.clone())?;
-    store.check_imported_record(&root.join("input"))?;
+    check_imports(&store, root, rotation)?;
     if store.receipt_contract() != contract {
         return Err(ErrorCode::ReconciliationRequired);
     }
@@ -881,6 +1121,18 @@ fn child(mode: &str, root: &Path) -> Result<(), ErrorCode> {
         #[cfg(feature = "application-slot")]
         "slot-inspect" => broker_inspect(root, ReceiptContract::Installation),
         #[cfg(feature = "application-slot")]
+        "slot-rotation-create" => {
+            broker_service_fixture(root, true, ReceiptContract::Installation, true, 1)
+        }
+        #[cfg(feature = "application-slot")]
+        "slot-rotation-two" | "slot-rotation-open" => {
+            broker_service_fixture(root, false, ReceiptContract::Installation, true, 2)
+        }
+        #[cfg(feature = "application-slot")]
+        "slot-rotation-inspect" => {
+            broker_inspect_fixture(root, ReceiptContract::Installation, true)
+        }
+        #[cfg(feature = "application-slot")]
         "slot-recipient-create" | "slot-recipient-open" | "slot-recipient-inspect" => {
             process_recipient::supervised_application_child(
                 &root.join("custody/recipient"),
@@ -896,16 +1148,29 @@ fn child(mode: &str, root: &Path) -> Result<(), ErrorCode> {
         | "slot-create-exit-directory"
         | "slot-create-exit-receipt" => broker_service(root, true, ReceiptContract::Installation),
         #[cfg(all(test, feature = "application-slot"))]
+        "slot-rotation-two-exit-intent"
+        | "slot-rotation-two-exit-stage"
+        | "slot-rotation-two-exit-rename"
+        | "slot-rotation-two-exit-directory"
+        | "slot-rotation-two-exit-receipt" => {
+            broker_service_fixture(root, false, ReceiptContract::Installation, true, 2)
+        }
+        #[cfg(all(test, feature = "application-slot"))]
         "slot-recipient-exit-intent"
         | "slot-recipient-exit-stage"
         | "slot-recipient-exit-rename"
         | "slot-recipient-exit-directory"
-        | "slot-recipient-exit-receipt" => {
+        | "slot-recipient-exit-receipt"
+        | "slot-rotation-recipient-exit-intent"
+        | "slot-rotation-recipient-exit-stage"
+        | "slot-rotation-recipient-exit-rename"
+        | "slot-rotation-recipient-exit-directory"
+        | "slot-rotation-recipient-exit-receipt" => {
             super::application_slot::set_child_fault(mode)?;
             process_recipient::supervised_application_child(
                 &root.join("custody/recipient"),
                 root,
-                true,
+                !mode.starts_with("slot-rotation-"),
                 false,
             )
         }
@@ -1287,5 +1552,216 @@ mod tests {
                 )
             });
         std::process::exit(if result.is_ok() { 0 } else { 2 });
+    }
+
+    #[cfg(feature = "application-slot")]
+    #[test]
+    fn application_rotation_composes_both_imports_fresh_phases_and_durable_revoke() {
+        let paths = Paths::new();
+        let report =
+            super::super::application_rotation::run_synthetic_application_rotation_drill(&paths.0)
+                .unwrap();
+        assert_eq!(report.imported_versions, [1, 2]);
+        assert_eq!(report.completed_installation_generations, [1, 2]);
+        assert_eq!(report.delivery_broker_phases, 2);
+        assert_eq!(report.retained_duplicate_outcomes, 2);
+        assert!(report.exact_import_ciphertexts_verified);
+        assert!(report.distinct_import_bindings_verified);
+        assert!(report.exact_approvals_verified);
+        assert!(report.fresh_authentication_between_versions);
+        assert!(report.old_version_rollback_prevented);
+        assert!(report.installation.revocation_survived_restart);
+        assert_eq!(
+            (
+                report.installation.consumed_uses,
+                report.installation.remaining_uses
+            ),
+            (2, 2)
+        );
+        assert_eq!(
+            fs::read(paths.0.join("application/provider-auth")).unwrap(),
+            store::CANARY_TWO.as_bytes()
+        );
+        for version in [1, 2] {
+            assert_eq!(
+                fs::read(paths.0.join(format!("input-{version}/record.age"))).unwrap(),
+                fs::read(paths.0.join(format!("vault/secret-{version}.age"))).unwrap()
+            );
+        }
+        assert_ne!(
+            fs::read(paths.0.join("input-1/record.age")).unwrap(),
+            fs::read(paths.0.join("input-2/record.age")).unwrap()
+        );
+        // Neither inspector can silently treat one imported version as the pair.
+        assert!(
+            super::super::application_slot::inspect_synthetic_application_slot(&paths.0).is_err()
+        );
+        let single = Paths::new();
+        super::super::application_slot::run_synthetic_application_slot_drill(&single.0).unwrap();
+        assert!(
+            super::super::application_rotation::inspect_synthetic_application_rotation(&single.0)
+                .is_err()
+        );
+    }
+
+    #[cfg(feature = "application-slot")]
+    #[test]
+    fn application_rotation_second_child_exits_preserve_old_new_state_without_refund_or_replay() {
+        use std::os::unix::fs::MetadataExt;
+        let scenarios = [
+            ("slot-rotation-two-exit-intent", 1, 1, 1, false),
+            ("slot-rotation-two-exit-stage", 1, 1, 1, true),
+            ("slot-rotation-two-exit-rename", 1, 2, 1, false),
+            ("slot-rotation-two-exit-directory", 1, 2, 1, false),
+            ("slot-rotation-two-exit-receipt", 2, 2, 0, false),
+        ];
+        for (mode, generation, installed, pending, staged) in scenarios {
+            let paths = Paths::new();
+            let fixture = paths.bootstrap();
+            let (mut supervisor, mut channels, deadline) =
+                start_phase_mode(&paths.0, &fixture.vault_id, "slot-rotation-create", true)
+                    .unwrap();
+            assert_eq!(channels.connect().unwrap(), (true, true));
+            let first_invocation = channels.approve().unwrap();
+            let first: OperationRunView = value(
+                channels
+                    .agent("invoke_approved", &first_invocation)
+                    .unwrap(),
+                "run",
+            )
+            .unwrap();
+            assert_eq!(first.state, Lifecycle::Succeeded);
+            channels.close().unwrap();
+            drop(channels);
+            supervisor.finish(deadline).unwrap();
+            let first_history = fs::read(paths.0.join("application/installation.jws")).unwrap();
+            let mut predecessor =
+                fs::File::open(paths.0.join("application/provider-auth")).unwrap();
+            let predecessor_inode = predecessor.metadata().unwrap().ino();
+
+            let (mut supervisor, mut channels, deadline) =
+                start_phase_mode(&paths.0, &fixture.vault_id, mode, false).unwrap();
+            let ids = pids(&mut supervisor);
+            assert_eq!(channels.connect().unwrap(), (true, true));
+            assert!(is_error(
+                &channels
+                    .agent("invoke_approved", &first_invocation)
+                    .unwrap(),
+                ErrorCode::NotFound
+            ));
+            let invocation = channels.approve().unwrap();
+            let run: OperationRunView = value(
+                channels.agent("invoke_approved", &invocation).unwrap(),
+                "run",
+            )
+            .unwrap();
+            assert_eq!(run.state, Lifecycle::OutcomeUnknown, "{mode}");
+            let before_duplicate = fs::read(paths.0.join("vault/journal.jws")).unwrap();
+            let duplicate: OperationRunView = value(
+                channels.agent("invoke_approved", &invocation).unwrap(),
+                "run",
+            )
+            .unwrap();
+            assert_eq!(run, duplicate, "{mode}");
+            assert_eq!(
+                fs::read(paths.0.join("vault/journal.jws")).unwrap(),
+                before_duplicate,
+                "{mode}"
+            );
+            channels.close().unwrap();
+            drop(channels);
+            supervisor.finish(deadline).unwrap();
+            reaped(ids);
+
+            let snapshot = || {
+                [
+                    "vault/journal.jws",
+                    "application/installation.jws",
+                    "application/provider-auth",
+                    "application/.provider-auth.stage",
+                ]
+                .map(|name| {
+                    let path = paths.0.join(name);
+                    match fs::metadata(&path) {
+                        Ok(metadata) => Some((
+                            fs::read(path).unwrap(),
+                            metadata.ino(),
+                            metadata.mode(),
+                            metadata.modified().unwrap(),
+                        )),
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+                        Err(_) => panic!("fixture object unreadable"),
+                    }
+                })
+            };
+            let evidence = snapshot();
+            let report =
+                super::super::application_rotation::inspect_synthetic_application_rotation(
+                    &paths.0,
+                )
+                .unwrap();
+            let state = &report.installation;
+            assert_eq!(
+                (
+                    state.consumed_uses,
+                    state.remaining_uses,
+                    state.incomplete_deliveries,
+                    state.unknown_deliveries
+                ),
+                (2, 2, 0, 1),
+                "{mode}"
+            );
+            assert_eq!(
+                (
+                    state.recipient_generation,
+                    state.installed_version,
+                    state.incomplete_installations
+                ),
+                (generation, installed, pending),
+                "{mode}"
+            );
+            assert!(state.installation_receipt_verified);
+            assert!(!state.automatic_retry_allowed);
+            assert_eq!(state.restored_sessions, 0);
+            assert_eq!(
+                paths.0.join("application/.provider-auth.stage").exists(),
+                staged,
+                "{mode}"
+            );
+            assert!(fs::read(paths.0.join("application/installation.jws"))
+                .unwrap()
+                .starts_with(&first_history));
+            let mut prior_bytes = Vec::new();
+            predecessor.read_to_end(&mut prior_bytes).unwrap();
+            assert_eq!(prior_bytes, store::CANARY_ONE.as_bytes());
+            let current = paths.0.join("application/provider-auth");
+            assert_eq!(
+                fs::read(&current).unwrap(),
+                if installed == 1 {
+                    store::CANARY_ONE
+                } else {
+                    store::CANARY_TWO
+                }
+                .as_bytes()
+            );
+            assert_eq!(
+                fs::metadata(current).unwrap().ino() == predecessor_inode,
+                installed == 1
+            );
+            assert_eq!(snapshot(), evidence, "{mode}");
+            assert!(
+                start_phase_mode(&paths.0, &fixture.vault_id, "slot-rotation-two", false).is_err(),
+                "{mode}"
+            );
+            assert_eq!(
+                super::super::application_rotation::inspect_synthetic_application_rotation(
+                    &paths.0
+                )
+                .unwrap(),
+                report,
+                "{mode}"
+            );
+            assert_eq!(snapshot(), evidence, "{mode}");
+        }
     }
 }
