@@ -1,12 +1,73 @@
 # Verification and evidence
 
+## Broker process service checkpoint (2026-10-10)
+
+Local tested runtime and acceptance-test commit:
+`77d4eaad98770bdaa776f6b9308077422e32aa28`, based on the tree of PR #3 head
+`85516f171a89d325ecb98419aa2a43cf74c02c96` (local equivalent `4f0b692`).
+This increment is stacked on the composed-canary branch; it does not merge or
+supersede the still-draft dependency. Hosted CI for this new source is pending
+publication and must be checked at its exact published head. Prior CI does not
+cover this process service.
+
+Environment: Debian 13.6 Linux x86_64 development workspace, official Rust/Cargo
+1.96.1. Cargo.lock remains byte-identical with SHA-256
+`90e27be2374c74135cd31fe1285db74bdd264d62b64673b217080989ca9de55b`.
+There are no dependency, toolchain, feature-graph or CI permission changes.
+
+- All 317 all-feature library tests passed, including nine socket-driver tests
+  and eight process-service results (seven scenarios and the child test helper).
+  Existing TLS, import, recipient, composed and lifecycle regressions remain on.
+- Independent CLI acceptance passed seven all-feature and two default tests.
+  Actual imported ciphertext remains identical to the delivered stored version.
+  The broker and recipient execute as separate children, with simulated actor
+  and TLS client signers outside the broker. Normal and fresh-inspection reports
+  retain one completed use, generation one, three remaining uses, no restored
+  sessions, duplicate reuse, cold authentication and durable revoke.
+- Private test builds exercise actual process response loss. A lost agent TLS
+  reply retains completion and rejects cold request-ID reuse. A recipient exit
+  after durable acceptance but before acknowledgement retains one consumed
+  unknown, with no automatic retry/refund and cold admission refused. A fresh
+  inspector can still read that evidence. These are ordinary functional tests;
+  not every transport fault is composed with every durable effect boundary.
+- Broker termination, client closure and supervisor timeout cases observe both
+  owned children reaped before any use. The guarantee excludes killing the
+  supervisor itself and interrupting arbitrary native calls. CLI tests inspect
+  root-scoped Linux process records after completion/failure. Twelve retained
+  artifact missing/corruption cases fail without changing the remaining state;
+  restored artifacts permit inspection. Outputs are bounded and checked for
+  selected canary/private markers. These checks are not OS protection evidence.
+- Full default/all-feature all-target runs with `--no-fail-fast` produced
+  160/430 passes, each with the same 14 locally denied listener cases and zero
+  ignored tests. The names match the prior checkpoint; permission errors remain
+  present. Both local aggregate commands therefore fail. No case was removed,
+  skipped or relaxed; the hosted Linux run must supply the full listener result.
+- Default/all-feature doctests passed 1/28. Formatting, unrestricted
+  all-target/all-feature Clippy with warnings denied, and rustdoc with warnings
+  denied passed. The worker also ran the production binary create/inspect path;
+  the independent CLI tests cover that same public entry point.
+
+The policy/journal clock remains fixed fixture time, while actual I/O and
+supervisor deadlines use Instant. An elapsed-first-phase test covers subsequent
+cold revocation; it does not implement trusted UTC, suspend or restart policy.
+All processes retain the same development UID/control plane. Bootstrap briefly
+holds all disposable keys; human approval is simulated. Construction/scope
+report flags cannot admit a deployment. The [service contract](process-service.md)
+and [operator plan](operator-live-trial-plan.md) retain protected entry/custody,
+independent human identity, immutable isolated application delivery, external
+recovery anchor, operational time/lifecycle/audit, provider and assurance gaps.
+`require_live_deployment()` still refuses unconditionally. The stopped
+independent review has not been resumed or replaced.
+
 ## Composed canary checkpoint (2026-10-09)
 
 Local tested runtime and acceptance-test commit:
 `cbcfa1ea110bd62ec6ad17a5de5066fa294ea407`, based on PR #2 head
 `0ab8a1ac9a385ed7d9fff4b6f5c6efa0727e3303`. This increment is stacked on the
-unmerged protected-mechanism PR. Publication and exact-head CI are recorded on
-the new draft PR; no earlier CI run covers this increment.
+protected-mechanism PR. Its published head is
+`85516f171a89d325ecb98419aa2a43cf74c02c96` in
+[draft PR #3](https://github.com/NathanaelG1/Aegis/pull/3), with tree
+`29820cf8728ce04e1e41f65ed564a11570a6d233`, identical to local final `4f0b692`.
 
 The development workspace is Debian 13.6 Linux x86_64 with official Rust/Cargo
 1.96.1. Cargo.lock is byte-identical to the preceding checkpoint, SHA-256
@@ -38,6 +99,15 @@ No dependency or feature-graph change is introduced.
   Clippy with warnings denied and all-feature rustdoc with warnings denied
   passed. The composed executable and separate `inspect` invocation also
   passed an independent smoke.
+
+The exact published head subsequently passed
+[hosted CI run 38006465796](https://github.com/NathanaelG1/Aegis/actions/runs/38006465796)
+on Ubuntu 24.04.5 LTS x86_64, runner image `20261004.327.1`, with Rust/Cargo
+1.96.1 and the unchanged lockfile above. All 172 default and 420 all-feature
+all-target tests passed, including all 21 Unix interface cases in both
+configurations, with zero failures or ignored tests. Default/all-feature
+doctests passed 1/27; formatting, Clippy and rustdoc passed. This covers the
+composed source only, not the later process-owned broker service.
 
 Failure evidence has distinct scopes. Private import tests reject changed
 vault/storage/writer/recipient/receipt-key, reference/version, profile/slot,

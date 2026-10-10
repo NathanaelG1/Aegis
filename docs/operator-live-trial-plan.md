@@ -28,11 +28,14 @@ reports:
   process isolation. The all-role fixture kit is development material.
 
 The later [TLS](tls-transport.md), [bounded import](protected-entry.md) and
-[recipient-process](recipient-process.md) increments add real mechanisms in
-separate fixed-fixture drills. The next [composed-canary milestone](composed-canary-flow.md)
-must join the actual imported ciphertext, TLS protocol and child recipient;
-its exact-source evidence is separate from both those drills and this baseline.
-It does not complete the operational C1–C8 requirements below.
+[recipient-process](recipient-process.md) increments added real mechanisms in
+separate fixed-fixture drills. The [composed-canary milestone](composed-canary-flow.md)
+then joined the actual imported ciphertext, TLS protocol and child recipient.
+Its exact head `85516f171a89d325ecb98419aa2a43cf74c02c96` passed
+[hosted CI](https://github.com/NathanaelG1/Aegis/actions/runs/38006465796):
+172 default and 420 all-feature tests, 1/27 doctests and quality checks. This
+is separate evidence from the original baseline and does not complete the
+operational C1–C8 requirements below.
 
 These are historical, exact-source functional results, not results for future
 commits or evidence of a secret boundary. Re-run the final candidate. In
@@ -106,8 +109,8 @@ all development input disposable until the later gates are satisfied.
 | C1: Deployment admission | `vault::entry`; fixed metadata receipts | Trusted measurement/provenance for exact artifact, configuration, role enrollment and boundary evidence; freshness and invalidation on change; revalidation at use. Signed caller-authored claims alone cannot certify the host. Unsupported/missing evidence must deny before any secret read. |
 | C2: Role-specific custody and operator entry | `vault::store::{Kit, BrokerMaterial, RecipientMaterial}`; private crypto types | Independent role provisioning/loaders, protected unlock/lock/version/rotation, bounded user-entry interface and transactional encrypted import. No all-role production kit, plaintext argv/environment/log input, general export API or agent-supplied private value. Recovery must work without granting the agent custody. |
 | C3: Human and connector identity | `vault::auth`; separate `AgentEndpoint`/`AdminEndpoint` | Operational enrollment/revocation and protected proof injection; genuine human interaction on an independent client bound to the exact displayed plan. Strict role/purpose/audience/epoch binding; no synthetic actor, header or local username may substitute for identity. |
-| C4: Authenticated encrypted transport and time | `vault::transport`; transport-neutral protocol handlers | Maintained encrypted transport with verified endpoint/peer identity, channel-bound proofs, separately owned admin routing, fixed trust configuration and exact default-deny ACLs. Absolute read/write/lifetime bounds, admission limits, disconnect handling and trusted UTC/elapsed-time behavior must be implemented and tested. Fixture framing and private networking supply none of this. |
-| C5: Real recipient handoff | `vault::recipient_adapter`; existing runtime `Adapter::execute` | One enrolled external recipient and fixed file slot, joined to the existing durable reservation before decryption/handoff. Bind effective executable/dependency/configuration/destination identity and expected generation at installation; verify signed capsule/receipt correlation. Handle-based namespace validation, protected staging/replacement, file/directory durability and safe cleanup need mechanism-specific fault tests. No check-path-then-reopen shortcut. |
+| C4: Authenticated encrypted transport and time | `vault::tls::socket`, `vault::process_service`, framing and role-specific protocol handlers | The closed process service now has bounded actual inherited socket I/O and separate broker/client ownership. Operational accept/admission policy, independently owned admin routing, trust/enrollment renewal and exact deployment ACLs remain open. The journal/proof clock is still fixed fixture time; trusted UTC, reboot/suspend behavior and complete lifecycle evidence remain required. Two inherited channels do not implement a deployed connection service. |
+| C5: Real recipient handoff | `vault::process_recipient`, durable `Store::Recipient` and runtime `Adapter::execute`; separate adapter contract fixture | One enrolled external application and fixed file slot, joined to the existing durable reservation before decryption/handoff. Bind effective executable/dependency/configuration/destination identity and expected generation at installation; verify signed capsule/receipt correlation. Handle-based namespace validation, protected staging/replacement, file/directory durability and safe cleanup need mechanism-specific fault tests. Existing encrypted acceptance records are not application credential installation. |
 | C6: Protected state and independent anchor | `vault::store` journal/guard/anchor | Operational backend with protected namespace, crash-safe transitions and independently authenticated compare/advance/fencing outside the broker/recipient restore domain. Detect coherent old-state restore or deletion; unavailable anchor denies. Specify recovery and ambiguous-handoff reconciliation without retry, refund or restored sessions/approval. |
 | C7: Lifecycle, audit and incident controls | Core reserve/revoke and synthetic inspection | Fresh epochs and authentication on restart; durable budgets, revocation and uncertainty; concurrent-wake fencing; actual suspend/clock/kill behavior. Bounded operator audit records for exact versions/identities/decisions/outcomes; no secret, token fingerprint, raw proof or diagnostic payload in agent-facing status/logs. Distinguish future-delivery revoke, recipient cleanup and provider revoke. |
 | C8: Narrow provider use and release packaging | Synthetic GitHub/signing paths; no live adapter | If the trial exercises a provider, implement only its selected read-only operation with fixed endpoint/resource/scope, validated encrypted transport, no redirect/proxy substitution, safe output and provider-side expiry/revoke evidence. Package a pinned build/dependency inventory and protected update path; test the actual connector and recipient, not just library calls. |
@@ -264,14 +267,18 @@ live secret. Their exact-source test evidence belongs in the verification record
 
 ## 9. Composed canary and the next operator decision
 
-The [composed flow](composed-canary-flow.md) specifies the next executable
-milestone and an explicit pending-evidence ledger. It must use the actual bounded
-import as the broker's delivery source, preserve durable reservation before
-decryption/handoff, and carry the exact capsule and verified receipt through the
-fixed recipient route. Regenerating an equivalent store fixture or running the
-component examples in sequence does not meet that milestone. The child remains
-UNISOLATED and source-generated readiness or prerequisite claims cannot admit
-live use.
+The [composed flow](composed-canary-flow.md) now uses the actual bounded import
+as the broker's delivery source, preserves durable reservation before
+decryption/handoff, and carries the exact capsule and verified receipt through
+the fixed recipient route. Its evidence ledger distinguishes actual composed
+execution from focused failure cases. The child remains UNISOLATED and
+source-generated readiness or prerequisite claims cannot admit live use.
+
+The next bounded implementation moves TLS I/O and the broker runtime across
+actual process-owned sockets, with actor signing outside the broker and fixed
+supervisor ownership of both children. [ADR 0020](adr/0020-process-owned-dummy-broker-service.md)
+defines its acceptance scope. It uses inherited socketpairs and disposable
+fixtures; a network listener and operational human client remain separate work.
 
 The next operator choices are the exact Linux host/account/OS/filesystem,
 independent human client, protected broker/recipient custody, immutable recipient
