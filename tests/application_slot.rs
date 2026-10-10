@@ -378,12 +378,26 @@ mod unix {
                 assert_eq!(record["previous"], digest(lines[index - 1].as_bytes()));
             }
         }
+        assert_eq!(records[0]["sequence"], 1);
+        assert_eq!(records[0]["previous"], "");
+        let intent = &records[1]["event"]["intent"];
+        let capsule_token = intent["capsule"].as_str().unwrap();
+        let capsule = signed_payload(capsule_token);
+        assert_eq!(intent["capsule_digest"], digest(capsule_token.as_bytes()));
+        assert_eq!(intent["prior_generation"], 0);
+        assert_eq!(intent["next_generation"], 1);
+        assert_eq!(capsule["vault_id"], manifest["vault_id"]);
+        assert_eq!(capsule["expected_generation"], 0);
         let receipt = signed_payload(records[2]["event"]["receipt"].as_str().unwrap());
         let ack = &receipt["ack"];
         assert_eq!(ack["schema"], 1);
         assert_eq!(ack["kind"], "aegis.synthetic.application-slot.installed.v1");
         assert_eq!(ack["vault_id"], manifest["vault_id"]);
-        assert!(!ack["delivery_id"].as_str().unwrap().is_empty());
+        assert_eq!(ack["delivery_id"], "process-service-import-one");
+        assert_eq!(ack["delivery_id"], capsule["delivery_id"]);
+        assert_eq!(ack["capsule_digest"], intent["capsule_digest"]);
+        assert_eq!(receipt["profile"], capsule["profile"]);
+        assert_eq!(receipt["file_digest"], intent["file_digest"]);
         assert_eq!(ack["version"], 1);
         assert_eq!(ack["generation"], 1);
         assert_eq!(
@@ -401,6 +415,29 @@ mod unix {
             json!({"id": "synthetic-provider-key", "version": 1})
         );
         assert_eq!(receipt["profile"]["repository_id"], 4242);
+        assert_eq!(receipt["profile"]["id"], "vault-delivery");
+        assert_eq!(receipt["profile"]["revision"], 1);
+        assert_eq!(receipt["profile"]["acl_revision"], 1);
+        assert_eq!(receipt["profile"]["adapter_contract"], 2);
+        assert_eq!(receipt["profile"]["output_contract"], 2);
+        assert_eq!(manifest["acl"].as_array().unwrap().len(), 1);
+        assert_eq!(manifest["acl"][0]["profile"], receipt["profile"]);
+        assert_eq!(manifest["records"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            manifest["records"][0]["reference"],
+            receipt["profile"]["secret"]
+        );
+        assert_eq!(
+            manifest["records"][0]["ciphertext_digest"],
+            digest(&fs::read(root.join("input/record.age")).unwrap())
+        );
+        assert_eq!(
+            manifest["records"][0]["import_metadata_digest"]
+                .as_str()
+                .unwrap()
+                .len(),
+            43
+        );
         assert_eq!(receipt["prior_generation"], 0);
         assert_eq!(receipt["slot_filename"], "provider-auth");
         assert_eq!(
@@ -416,6 +453,9 @@ mod unix {
         for field in [
             "synthetic_only",
             "input_import_bound",
+            "separate_broker_process",
+            "separate_recipient_process",
+            "broker_and_recipient_reaped",
             "installation_receipt_verified",
             "handle_relative_operations",
             "revoked",
@@ -489,10 +529,15 @@ mod unix {
             "duplicate_reused",
             "cold_start_required_authentication",
             "revocation_survived_restart",
+            "tls13_mutual_authentication_verified",
+            "unauthenticated_agent_denied",
+            "unauthenticated_admin_denied",
         ] {
             assert_eq!(value[field], true, "{field}");
         }
         assert_eq!(value["agent_transcript_contains_canary"], false);
+        assert_eq!(value["independent_human_presence_verified"], false);
+        assert_eq!(value["authenticated_role_channels"], 2);
 
         // Success means the fixed dummy application actually receives these
         // compiled bytes. An encrypted capsule/acceptance record is insufficient.
