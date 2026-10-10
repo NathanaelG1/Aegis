@@ -5,10 +5,12 @@
 Local tested runtime and acceptance-test commit:
 `77d4eaad98770bdaa776f6b9308077422e32aa28`, based on the tree of PR #3 head
 `85516f171a89d325ecb98419aa2a43cf74c02c96` (local equivalent `4f0b692`).
-This increment is stacked on the composed-canary branch; it does not merge or
-supersede the still-draft dependency. Hosted CI for this new source is pending
-publication and must be checked at its exact published head. Prior CI does not
-cover this process service.
+This increment is stacked on the composed-canary branch. Its published head is
+`210a1b32d2986ce8d6673baeafcfe69399d0adb8` in
+[draft PR #4](https://github.com/NathanaelG1/Aegis/pull/4), tree
+`fa4d89c07531d3333b36cbb8b52f3813d1e4362e`, identical to local final `7e64b81`.
+The API-created commits preserve PR #3 ancestry; local/remote commits are mapped
+by exact tree hashes.
 
 Environment: Debian 13.6 Linux x86_64 development workspace, official Rust/Cargo
 1.96.1. Cargo.lock remains byte-identical with SHA-256
@@ -46,6 +48,15 @@ There are no dependency, toolchain, feature-graph or CI permission changes.
   all-target/all-feature Clippy with warnings denied, and rustdoc with warnings
   denied passed. The worker also ran the production binary create/inspect path;
   the independent CLI tests cover that same public entry point.
+
+The exact published head subsequently passed
+[hosted CI run 38008817405](https://github.com/NathanaelG1/Aegis/actions/runs/38008817405)
+on Ubuntu 24.04.5 LTS x86_64, runner image `20261004.327.1`, with Rust/Cargo
+1.96.1. All 174 default and 444 all-feature all-target tests passed, including
+all 21 Unix interface cases in both configurations, with zero failures or
+ignored tests. Default/all-feature doctests passed 1/28; formatting, Clippy and
+rustdoc passed. The job log records the exact source SHA and unchanged lockfile.
+This evidence covers the process service, not later application-slot changes.
 
 The policy/journal clock remains fixed fixture time, while actual I/O and
 supervisor deadlines use Instant. An elapsed-first-phase test covers subsequent

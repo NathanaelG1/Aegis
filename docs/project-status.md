@@ -14,9 +14,9 @@ cold authentication and durable revoke follow the existing policy engine.
 Integrated local validation passed all 317 library tests, seven feature-enabled
 and two default CLI acceptance tests, 1/28 doctests, formatting, unrestricted
 Clippy and rustdoc. Default/all-feature aggregates produced 160/430 passes plus
-the unchanged 14 denied listener cases, with zero ignored tests. Exact-head
-hosted CI for this increment is pending publication; older green runs do not
-cover it. The [verification record](verification.md) describes both actual
+the unchanged 14 denied listener cases, with zero ignored tests. Its later
+exact-head hosted CI passed all 174 default and 444 all-feature cases, including
+the listener suite. The [verification record](verification.md) describes both actual
 process reply-loss cases, child cleanup and their limits. Dependencies are
 unchanged.
 
