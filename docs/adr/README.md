@@ -23,3 +23,4 @@ ADRs freeze the decisions made for the synthetic foundation and identify unresol
 | [0017](0017-synthetic-adapter-foundations.md) | Fixed-fixture adapter groundwork | Metadata-only entry ceremony, enrolled recipient handoff and bounded peer-bound channel framing; production activation refused |
 | [0018](0018-protected-mechanism-development.md) | Accepted for canary-only mechanism development | Maintained mTLS, bounded encrypted import and separate recipient execution; deployment and real-key gates retained |
 | [0019](0019-composed-canary-delivery.md) | Accepted for canary-only composition | Consume the actual reviewed import through TLS-approved durable delivery to the fixed child; preserve all operational gates |
+| [0020](0020-process-owned-dummy-broker-service.md) | Accepted for fixed-canary process service | Separate TLS socket ownership and broker process, externally owned actor signing and fixed child cleanup; no listener or live admission |

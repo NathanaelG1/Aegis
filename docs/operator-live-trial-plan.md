@@ -28,11 +28,14 @@ reports:
   process isolation. The all-role fixture kit is development material.
 
 The later [TLS](tls-transport.md), [bounded import](protected-entry.md) and
-[recipient-process](recipient-process.md) increments add real mechanisms in
-separate fixed-fixture drills. The next [composed-canary milestone](composed-canary-flow.md)
-must join the actual imported ciphertext, TLS protocol and child recipient;
-its exact-source evidence is separate from both those drills and this baseline.
-It does not complete the operational C1–C8 requirements below.
+[recipient-process](recipient-process.md) increments added real mechanisms in
+separate fixed-fixture drills. The [composed-canary milestone](composed-canary-flow.md)
+then joined the actual imported ciphertext, TLS protocol and child recipient.
+Its exact head `85516f171a89d325ecb98419aa2a43cf74c02c96` passed
+[hosted CI](https://github.com/NathanaelG1/Aegis/actions/runs/38006465796):
+172 default and 420 all-feature tests, 1/27 doctests and quality checks. This
+is separate evidence from the original baseline and does not complete the
+operational C1–C8 requirements below.
 
 These are historical, exact-source functional results, not results for future
 commits or evidence of a secret boundary. Re-run the final candidate. In
@@ -264,14 +267,18 @@ live secret. Their exact-source test evidence belongs in the verification record
 
 ## 9. Composed canary and the next operator decision
 
-The [composed flow](composed-canary-flow.md) specifies the next executable
-milestone and an explicit pending-evidence ledger. It must use the actual bounded
-import as the broker's delivery source, preserve durable reservation before
-decryption/handoff, and carry the exact capsule and verified receipt through the
-fixed recipient route. Regenerating an equivalent store fixture or running the
-component examples in sequence does not meet that milestone. The child remains
-UNISOLATED and source-generated readiness or prerequisite claims cannot admit
-live use.
+The [composed flow](composed-canary-flow.md) now uses the actual bounded import
+as the broker's delivery source, preserves durable reservation before
+decryption/handoff, and carries the exact capsule and verified receipt through
+the fixed recipient route. Its evidence ledger distinguishes actual composed
+execution from focused failure cases. The child remains UNISOLATED and
+source-generated readiness or prerequisite claims cannot admit live use.
+
+The next bounded implementation moves TLS I/O and the broker runtime across
+actual process-owned sockets, with actor signing outside the broker and fixed
+supervisor ownership of both children. [ADR 0020](adr/0020-process-owned-dummy-broker-service.md)
+defines its acceptance scope. It uses inherited socketpairs and disposable
+fixtures; a network listener and operational human client remain separate work.
 
 The next operator choices are the exact Linux host/account/OS/filesystem,
 independent human client, protected broker/recipient custody, immutable recipient
