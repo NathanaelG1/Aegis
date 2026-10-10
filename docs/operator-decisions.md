@@ -36,6 +36,9 @@ control-plane routes can still expose or replace trusted components.
    tools/accounts? Include shell, files/processes, service/deploy controls,
    dashboards, backups and recovery. Recommended: only the enrolled Aegis
    application endpoint reaches the target; independently verify exclusions.
+   Aegis limits only authority it brokers. Existing GitHub connectors, tokens
+   and accounts may independently confer access; inventory them before claiming
+   selected-repositories-only access. No permissions are being changed now.
 3. **Recipient:** Which fixed application/build, distinct service identity and
    protected slot? Who controls its binary, dependencies, service/startup
    environment, configuration and parent directories? Recommended: the fixed

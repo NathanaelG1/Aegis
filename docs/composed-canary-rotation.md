@@ -6,8 +6,9 @@
 and encrypted imports through the actual TLS broker process and recipient
 child. This document specifies required behavior; it does not declare unrun
 tests passed. Exact-source results belong in [verification](verification.md).
-Focused runtime, public CLI and second-install fault checks for this increment
-are pending at this documentation checkpoint.
+Focused runtime, public CLI and second-install fault checks passed at the
+sources recorded below. Final integrated aggregate and exact-head hosted
+evidence remain pending.
 
 The existing `aegis-application-slot` command still imports and installs only
 version one. Its focused in-process replacement tests are separate evidence.
@@ -102,7 +103,7 @@ new authority.
 
 A normal completed drill must report two consumed uses, two remaining uses,
 two completed installations, installed version two and recipient generation
-two, with no incomplete or unknown delivery/installation. It verifies both
+two, with no incomplete/unknown deliveries or incomplete installations. It verifies both
 retained duplicate outcomes, fresh authentication after restart and durable
 future-delivery revocation. Revoke leaves the installed canary in place.
 
@@ -137,12 +138,13 @@ OS credentials or absence of private in-memory verification.
 
 ## Second-install interruption contract
 
-The following are required expected observations, not a record of checks
-already run. Start with version one durably completed. Exit the actual
-recipient child during the second installation at each boundary below. Each
-case must retain the first completion, two consumed uses, two remaining uses,
-and the second delivery as unknown after acknowledgement loss. A duplicate
-returns its retained unknown outcome; cold runtime open cannot redispatch it.
+The following observations passed in the actual second-recipient-exit test at
+runtime source `a2e41d2146cd648c8a16ce06cf9de256d568a529`. Each case starts with
+version one durably completed, then exits the child at the second-install
+boundary shown. Every case retained the first completion, two consumed uses,
+two remaining uses and one unknown broker delivery. Exact duplicate invocation
+retained that unknown result, cold runtime redispatch was denied, and inspection
+left retained evidence unchanged.
 
 | Second-install child exits after | Completed generation | Observed file version | Incomplete installations | Stage retained |
 | --- | --- | --- | --- | --- |
@@ -168,6 +170,45 @@ inspection, durable revoke, and the second-install exits above. Public tests
 must also cover missing/corrupt/mixed artifacts, wrong supported canary,
 no-clobber and strict arguments, feature refusal, bounded reports, tested
 non-slot output/file marker absence and owned-child cleanup.
+
+Runtime source `a2e41d2146cd648c8a16ce06cf9de256d568a529`, tree
+`0646ae97f8e5927fecccabafe8299c21c5e83378`, passed the following focused checks on
+Linux x86_64 with Rust 1.96.1 and locked/offline dependencies:
+
+- Protected-entry suite: 32/32, including seven new two-import checks.
+- Shared-ceremony store rejection: 1/1.
+- Process rotation tests: 2/2, covering the full two-import composition and
+  all five actual second-install child exits in the table above. The crash test
+  also verifies that the held predecessor descriptor still reads version one
+  and replacement uses a new inode.
+- All-feature/all-target `cargo check` and Clippy with warnings denied;
+  vault-only Clippy, formatting and whitespace checks.
+
+Independent public acceptance source
+`2674c5bce1de64af9e5e3883a6f275b733b97b4d`, tree
+`b1b579eb2b2722d2237aa262d3cd7948dc6a34eb`, includes runtime `a2e41d2` as
+cherry-pick `431b3ed`. It passed these executable test targets on Linux 6.18.44
+x86_64 with Rust 1.96.1 and locked/offline dependencies:
+
+| Feature selection | New `application_rotation` tests | Existing `application_slot` tests |
+| --- | --- | --- |
+| Default | 3/3 | 3/3 |
+| `vault-spike` | 3/3 | 3/3 |
+| `application-slot` | 7/7 | 8/8 |
+| All features | 7/7 | 8/8 |
+
+Those checks independently observed the actual version-two file, both exact
+import ciphertext matches, ten broker-journal records and five installation
+records with correlated tuple metadata, then invoked fresh runtime inspection
+for signature/envelope/file validation. They covered missing, corrupt,
+signature-only-tampered, mixed and wrong-canary artifacts; incompatible layout
+refusal; unchanged bytes/inodes/modes/modification times on inspection success
+and refusal; no-overwrite, strict arguments and feature refusal; bounded
+output/non-slot marker checks; and root-scoped owned-child cleanup. Formatting
+and default/all-feature all-target Clippy with warnings denied also passed.
+
+These are focused source results. They are not the final integrated aggregate,
+hosted CI result, power-loss test or operational boundary assessment.
 
 Keep metadata decoding distinct from cryptographic validation. A test decoding
 JWS payloads observes tuple fields; runtime inspection supplies signature,
