@@ -5,7 +5,11 @@ This milestone gives the broker and its TLS peers separate process-owned socket
 I/O. It retains the actual encrypted import, main policy engine, durable
 reservation and fixed recipient handoff from the [composed canary](composed-canary-flow.md).
 The starting source is PR #3 head `85516f171a89d325ecb98419aa2a43cf74c02c96`,
-whose tree equals local `4f0b692`. Earlier test results do not cover new service code.
+whose tree equals local `4f0b692`. The published service head is `210a1b3` in
+[draft PR #4](https://github.com/NathanaelG1/Aegis/pull/4), tree-identical to local
+`7e64b81`. Its exact-head hosted run passed all 174 default and 444 all-feature
+tests; see the [verification record](verification.md). This does not cover later
+application-slot implementation.
 
 ## Fixed process and descriptor ownership
 

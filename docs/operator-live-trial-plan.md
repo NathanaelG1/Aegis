@@ -1,6 +1,6 @@
 # Operator-controlled Linux trial plan
 
-**Updated 9 October 2026 — implementation plan; live use remains NO-GO.** This maps the
+**Updated 10 October 2026 — implementation plan; live use remains NO-GO.** This maps the
 remaining source and deployment work to a bounded first trial. It authorizes no
 host purchase, access change, deployment, credential creation/entry or provider
 operation. The previously stopped independent review remains incomplete; this
@@ -37,6 +37,18 @@ Its exact head `85516f171a89d325ecb98419aa2a43cf74c02c96` passed
 is separate evidence from the original baseline and does not complete the
 operational C1–C8 requirements below.
 
+The later [process-service milestone](process-service.md) is PR #4, open draft
+stacked on PR #3, head `210a1b32d2986ce8d6673baeafcfe69399d0adb8`, tree
+`fa4d89c07531d3333b36cbb8b52f3813d1e4362e` (local `7e64b81`). Its
+[exact-head hosted run](https://github.com/NathanaelG1/Aegis/actions/runs/38008817405)
+passed 174 default and 444 all-feature tests, including 317 all-feature library
+tests; 1/28 doctests; all 21 Unix interface tests in each feature configuration;
+and formatting, Clippy and rustdoc checks, with zero failed or ignored tests.
+The host was Ubuntu 24.04.5 LTS x86_64 with Rust 1.96.1. The new
+[application-slot milestone](application-slot.md) starts from that checkpoint;
+its focused functional checks have separate exact-source results. Final
+integrated aggregate and hosted evidence belong in the verification record.
+
 These are historical, exact-source functional results, not results for future
 commits or evidence of a secret boundary. Re-run the final candidate. In
 [`src/vault/mod.rs`](../src/vault/mod.rs), `require_live_deployment()` always
@@ -59,7 +71,8 @@ Use one explicitly approved, operator-owned **Linux x86_64 host or VM**, with a
 named OS/kernel/filesystem and supported local IPC. Keep the agent on another
 machine with only an authenticated, ACL-bounded application endpoint. Use one
 small enrolled recipient, initially with one fixed protected-file credential
-slot. This is a proposed narrow adapter, not existing file-installation support.
+slot. The [canary application-slot contract](application-slot.md) develops the
+file mechanism; it does not establish a protected operational destination.
 No interchangeable destination paths, plugin systems or arbitrary shell should
 be exposed. A same-host agent is a later deployment profile requiring its own
 confinement evidence.
@@ -107,10 +120,10 @@ all development input disposable until the later gates are satisfied.
 | Work package | Existing seam | Required operational completion |
 | --- | --- | --- |
 | C1: Deployment admission | `vault::entry`; fixed metadata receipts | Trusted measurement/provenance for exact artifact, configuration, role enrollment and boundary evidence; freshness and invalidation on change; revalidation at use. Signed caller-authored claims alone cannot certify the host. Unsupported/missing evidence must deny before any secret read. |
-| C2: Role-specific custody and operator entry | `vault::store::{Kit, BrokerMaterial, RecipientMaterial}`; private crypto types | Independent role provisioning/loaders, protected unlock/lock/version/rotation, bounded user-entry interface and transactional encrypted import. No all-role production kit, plaintext argv/environment/log input, general export API or agent-supplied private value. Recovery must work without granting the agent custody. |
+| C2: Role-specific custody and operator entry | `vault::store::{Kit, BrokerMaterial, RecipientMaterial}`; private crypto types; [two independently reviewed canary imports](composed-canary-rotation.md) | Two fixed imports exercise exact version/profile bindings and one-shot import consumption; they do not implement protected user input or custody. Operational completion requires independently provisioned role stores/loaders, protected unlock/lock/version/rotation, bounded user entry and transactional import/recovery. Select the actual custody/unlock and independent human mechanisms through [operator decisions](operator-decisions.md). No all-role production kit, plaintext argv/environment/log input, general export API or agent-supplied private value; recovery must not grant agent custody. |
 | C3: Human and connector identity | `vault::auth`; separate `AgentEndpoint`/`AdminEndpoint` | Operational enrollment/revocation and protected proof injection; genuine human interaction on an independent client bound to the exact displayed plan. Strict role/purpose/audience/epoch binding; no synthetic actor, header or local username may substitute for identity. |
 | C4: Authenticated encrypted transport and time | `vault::tls::socket`, `vault::process_service`, framing and role-specific protocol handlers | The closed process service now has bounded actual inherited socket I/O and separate broker/client ownership. Operational accept/admission policy, independently owned admin routing, trust/enrollment renewal and exact deployment ACLs remain open. The journal/proof clock is still fixed fixture time; trusted UTC, reboot/suspend behavior and complete lifecycle evidence remain required. Two inherited channels do not implement a deployed connection service. |
-| C5: Real recipient handoff | `vault::process_recipient`, durable `Store::Recipient` and runtime `Adapter::execute`; separate adapter contract fixture | One enrolled external application and fixed file slot, joined to the existing durable reservation before decryption/handoff. Bind effective executable/dependency/configuration/destination identity and expected generation at installation; verify signed capsule/receipt correlation. Handle-based namespace validation, protected staging/replacement, file/directory durability and safe cleanup need mechanism-specific fault tests. Existing encrypted acceptance records are not application credential installation. |
+| C5: Real recipient handoff | `vault::process_recipient`, durable `Store::Recipient`, runtime `Adapter::execute`, [fixed application slot](application-slot.md) and [composed rotation](composed-canary-rotation.md) | The one-import slot has focused functional evidence; the bounded two-import contract extends actual broker/TLS/child replacement to generations one and two with retained receipts and second-install crash semantics. Exact-source results belong in [verification](verification.md); a contract or expected result is not a passed test. Neither composition establishes operational rotation. Completion still requires the selected immutable application/dependency/configuration closure, recipient-only protected destination, measured namespace/identity protection, lifecycle/cleanup and deployment-specific fault evidence. |
 | C6: Protected state and independent anchor | `vault::store` journal/guard/anchor | Operational backend with protected namespace, crash-safe transitions and independently authenticated compare/advance/fencing outside the broker/recipient restore domain. Detect coherent old-state restore or deletion; unavailable anchor denies. Specify recovery and ambiguous-handoff reconciliation without retry, refund or restored sessions/approval. |
 | C7: Lifecycle, audit and incident controls | Core reserve/revoke and synthetic inspection | Fresh epochs and authentication on restart; durable budgets, revocation and uncertainty; concurrent-wake fencing; actual suspend/clock/kill behavior. Bounded operator audit records for exact versions/identities/decisions/outcomes; no secret, token fingerprint, raw proof or diagnostic payload in agent-facing status/logs. Distinguish future-delivery revoke, recipient cleanup and provider revoke. |
 | C8: Narrow provider use and release packaging | Synthetic GitHub/signing paths; no live adapter | If the trial exercises a provider, implement only its selected read-only operation with fixed endpoint/resource/scope, validated encrypted transport, no redirect/proxy substitution, safe output and provider-side expiry/revoke evidence. Package a pinned build/dependency inventory and protected update path; test the actual connector and recipient, not just library calls. |
@@ -123,18 +136,26 @@ credential delivery. [Entry](operator-entry-contract.md),
 [transport](vault-transport-contract.md) and
 [delivery](application-delivery.md) contracts remain the detailed constraints.
 
-## 4. OPERATOR actions requiring specific approval
+## 4. Operator choices and later action approvals
 
-The operator owns these actions; writing code or approving synthetic development
-does not authorize them. Bundle requests once exact targets and consequences
-are known, using the [existing ceremony](operator-owned-deployment.md).
+First answer the six [operator design questions](operator-decisions.md). Keep
+the established selected-personal-repository GitHub App use case. Naming a
+host, custody candidate or client selects the implementation target; it does
+not authorize actions on it. The protected-entry and isolated-recipient
+adapters remain code work after the two-import mechanism composition.
 
-1. **Select the boundary.** Name the host/account, OS/filesystem, costs, fixed GitHub recipient build,
-   custody backend, independent human client and anchor/recovery location.
-   Keep the established selected-personal-repository GitHub App use case;
-   resolve its exact App/installation/repository IDs during operator enrollment. Verify
-   that provider controls can enforce the proposed separation before purchasing
-   or changing anything. No provider is selected by this document.
+The operator owns the later actions below. Writing code or approving synthetic
+development does not authorize them. Bundle approval requests once exact
+targets and consequences are known, using the
+[existing ceremony](operator-owned-deployment.md).
+
+1. **Approve exact provisioning when needed.** After the design choices are
+   resolved, specify the host/account, OS/filesystem, fixed recipient build,
+   custody backend, independent human client and anchor/recovery domain. Verify
+   that the proposed controls can enforce separation, then seek approval for
+   any actual provisioning, price/commitment or access changes. Resolve exact
+   GitHub App/installation/repository IDs during separately approved enrollment.
+   No provider, purchase or credential creation is selected by this document.
 2. **Approve a canary-only installation.** Approve the precise host identities,
    service/configuration changes, transport/network exposure, enrollment and
    pinned artifact digest. Operator provisioning keeps each private role value
@@ -265,7 +286,7 @@ production admission remain unsupported. These increments advance C1/C2
 interfaces but do not complete their operational requirements or enable any
 live secret. Their exact-source test evidence belongs in the verification record.
 
-## 9. Composed canary and the next operator decision
+## 9. Process service, application slot and the next operator decision
 
 The [composed flow](composed-canary-flow.md) now uses the actual bounded import
 as the broker's delivery source, preserves durable reservation before
@@ -274,11 +295,24 @@ the fixed recipient route. Its evidence ledger distinguishes actual composed
 execution from focused failure cases. The child remains UNISOLATED and
 source-generated readiness or prerequisite claims cannot admit live use.
 
-The next bounded implementation moves TLS I/O and the broker runtime across
-actual process-owned sockets, with actor signing outside the broker and fixed
-supervisor ownership of both children. [ADR 0020](adr/0020-process-owned-dummy-broker-service.md)
-defines its acceptance scope. It uses inherited socketpairs and disposable
-fixtures; a network listener and operational human client remain separate work.
+The [process service](process-service.md) now moves TLS I/O and the broker
+runtime across actual process-owned sockets, with actor signing outside the
+broker and fixed supervisor ownership of both children.
+[ADR 0020](adr/0020-process-owned-dummy-broker-service.md) defines its acceptance
+scope and section 1 identifies the exact-head hosted result. It uses inherited
+socketpairs and disposable fixtures; a network listener and operational human
+client remain separate work.
+
+The bounded milestone in [ADR 0021](adr/0021-fixed-application-slot.md) now installs
+the actual imported canary into one fixed application file. Its
+[acceptance contract](application-slot.md) requires handle-relative staging and
+replacement, durable intent before effects, file/directory synchronization and
+signed installation receipts. Reopen must detect partial or inconsistent state
+without repairing it, repeating effects, refunding consumed authority or
+restoring approval. Focused new-slot checks pass on the sources recorded in that
+contract; final integrated aggregate and hosted results are separate. The
+historical process-service CI pass does not cover the new code. File installation
+leaves the recipient UNISOLATED and all operational protection/real-key gates closed.
 
 The next operator choices are the exact Linux host/account/OS/filesystem,
 independent human client, protected broker/recipient custody, immutable recipient

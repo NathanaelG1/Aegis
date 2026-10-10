@@ -45,7 +45,7 @@ The planned network API uses [vendor-neutral application authentication and exac
 The optional vault feature now includes three executable mechanisms:
 
 - [Mutually authenticated TLS](docs/tls-transport.md) with exact fixture peer/role binding and exporter-bound frames, carrying a reviewed canary delivery through the existing protocol.
-- [Bounded encrypted import](docs/protected-entry.md), using zeroizing input buffers, frozen review metadata and ciphertext-only no-clobber publication. The only accepted value is a built-in disposable canary.
+- [Bounded encrypted import](docs/protected-entry.md), using zeroizing input buffers, frozen review metadata and ciphertext-only no-clobber publication. Accepted values are compiled disposable canaries.
 - [Separate recipient execution](docs/recipient-process.md), using a fixed child executable, recipient-only runtime custody, bounded inherited IPC and the existing durable reservation/receipt path.
 
 The standalone drills remain available. A [composed canary flow](docs/composed-canary-flow.md)
@@ -88,6 +88,51 @@ briefly owns all disposable keys, approvals remain simulated, and journal time
 remains fixed fixture time. There is no listener or protected operational entry;
 all live-key gates remain false. See [ADR 0020](docs/adr/0020-process-owned-dummy-broker-service.md).
 
+## Fixed application-slot milestone
+
+The optional [application-slot drill](docs/application-slot.md) extends the
+process service by installing the actual imported canary into the fixed
+`application/provider-auth` file. Directory-relative operations use held handles;
+a signed intent precedes staging, and a signed installation receipt follows
+file sync, replacement and directory sync. Import, review and delivery bind
+adapter/output contracts 2/2, separate from legacy encrypted acceptance.
+
+```sh
+cargo run --locked --offline --features application-slot --bin aegis-application-slot -- /tmp/aegis-slot-new
+cargo run --locked --offline --features application-slot --bin aegis-application-slot -- inspect /tmp/aegis-slot-new
+```
+
+The application file intentionally contains the public canary. A valid pending
+intent can be inspected without completing or replaying installation; an
+uncertain broker outcome stays consumed. The normal composed drill installs
+one imported version, while focused tests exercise two-version replacement.
+This is a same-UID fixture, with no operational protected application, real-key
+entry or live provider. See [ADR 0021](docs/adr/0021-fixed-application-slot.md)
+and the remaining [operator decisions](docs/operator-live-trial-plan.md).
+
+## Two-import composed rotation milestone
+
+The separate [rotation drill](docs/composed-canary-rotation.md) consumes two
+independently reviewed and encrypted fixed-canary imports. Each actual imported
+ciphertext reaches its exact approved delivery through broker TLS and the
+recipient child, advancing the same file slot from generation one to two.
+The broker profile is frozen per process, so the second version and subsequent
+revoke use fresh authenticated phases over the same durable history.
+
+```sh
+cargo run --locked --offline --features application-slot --bin aegis-application-rotation -- /tmp/aegis-rotation-new
+cargo run --locked --offline --features application-slot --bin aegis-application-rotation -- inspect /tmp/aegis-rotation-new
+```
+
+The one-import command remains available. Live duplicates reuse their phase's
+outcome; restart restores evidence without restoring sessions or approval.
+Uncertain second installation retains both consumed uses and never authorizes
+retry, refund or rollback. The application file intentionally contains a public
+canary. These are fixed same-UID experiments; operational rotation, protected
+custody and real-key entry remain unavailable. The next operational adapters
+need the concrete [operator decisions](docs/operator-decisions.md), which are
+separate from later installation, access and credential approvals.
+
 ## What is being built
 
 The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. Protected application delivery is an essential additional product requirement, not an optional plaintext-export convenience. Its [design contract](docs/application-delivery.md) specifies reference-only proposals, immutable human approval, recipient enrollment, safe status, revocation limits, and adversarial acceptance gates. The optional vault feature exercises delivery interfaces using fixed fixtures; production entry, external recipient integration and OS protections remain unimplemented or unverified. A useful live provider operation and an operational portable `age` backend also remain release work.
@@ -105,6 +150,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 | [Integrated synthetic vault](docs/vault-delivery-spike.md) | Encrypted canary delivery/rotation through authenticated core policy and durable recovery |
 | [Composed fixed-canary flow](docs/composed-canary-flow.md) | Actual encrypted import through TLS approval, durable broker and fixed child receipt; retained NO-GO gates |
 | [Fixed-canary broker process service](docs/process-service.md) | Owned broker/client TLS I/O, supervised children and real response-loss regressions |
+| [Fixed application-file installation](docs/application-slot.md) | Actual canary file replacement, signed installation evidence and read-only uncertainty inspection |
 | [Operator-owned deployment](docs/operator-owned-deployment.md) | Required privilege separation, canary verification and later user key-entry ceremony |
 | [Application authentication and ACLs](docs/access-control.md) | Vendor-neutral identity/policy, optional private networking, proxy trust and acceptance gates |
 | [Readiness and deployment choices](docs/readiness-checklist.md) | Consolidated missing end-to-end gates, required permissions, verification plan and effort estimate |

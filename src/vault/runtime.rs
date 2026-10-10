@@ -247,7 +247,7 @@ impl Host {
     pub(super) fn compose(
         kit: Arc<Kit>,
         store: Arc<Store>,
-        recipient: Arc<Recipient>,
+        recipient: impl Into<RecipientEndpoint>,
         version: u64,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, ErrorCode> {
@@ -367,7 +367,7 @@ pub(super) fn assemble_runtime(
         return Err(ErrorCode::InvalidRequest);
     }
     store.ready()?;
-    let profile = DeliveryProfile::fixture(version);
+    let profile = store.receipt_contract().profile(version);
     let setup = OperationSetup {
         principal: PrincipalId::new(AGENT).expect("constant"),
         profile: OperationProfile::Delivery(profile.clone()),

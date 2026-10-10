@@ -249,6 +249,409 @@ fn composed_input_rejects_noncanaries_and_changed_metadata_without_retry() {
     );
 }
 
+#[cfg(feature = "application-slot")]
+#[test]
+fn rotation_imports_freeze_separate_reviews_and_preserve_both_committed_ciphertexts() {
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    let material = kit.broker_material();
+    let paths = [h.root.join("input-one"), h.root.join("input-two")];
+    let imported = import_delivery_rotation_canaries(&paths[0], &paths[1], &material).unwrap();
+    assert_ne!(
+        imported[0].review.entry.instance,
+        imported[1].review.entry.instance
+    );
+    let mut digests = Vec::new();
+    for (version, input) in [ImportVersion::One, ImportVersion::Two]
+        .into_iter()
+        .zip(&imported)
+    {
+        let review = &input.review;
+        assert_eq!(review.entry.bindings, version.bindings());
+        assert!(review.entry.receipts.iter().all(|receipt| {
+            receipt.bindings == version.bindings() && receipt.instance == review.entry.instance
+        }));
+        assert_eq!(
+            review.broker.as_ref().unwrap().profile,
+            DeliveryProfile::installation(version.number())
+        );
+        let metadata = serde_json::to_vec(review).unwrap();
+        assert!(metadata.len() <= MAX_METADATA);
+        digests.push(crypto::hash(&metadata));
+        let ciphertext = committed_ciphertext(&review.destination).unwrap();
+        let clear = material.storage.decrypt(&ciphertext).unwrap();
+        assert_eq!(
+            decode_imported_for(
+                &clear.0,
+                digests.last().unwrap(),
+                &version.reference(),
+                &material,
+                ReceiptContract::Installation
+            )
+            .unwrap()
+            .0,
+            version.canary()
+        );
+    }
+    assert_ne!(digests[0], digests[1]);
+    let vault_path = h.root.join("vault");
+    let vault =
+        store::Store::create_imported_rotation(&vault_path, material.clone(), imported).unwrap();
+    vault.check_imported_rotation(&paths[0], &paths[1]).unwrap();
+    assert_eq!(
+        vault.check_imported_record(&paths[0]),
+        Err(ErrorCode::PolicyChanged)
+    );
+    assert_eq!(
+        vault.check_imported_rotation(&paths[1], &paths[0]),
+        Err(ErrorCode::PolicyChanged)
+    );
+    assert_eq!(
+        vault.check_imported_rotation(&paths[0], &paths[0]),
+        Err(ErrorCode::PolicyChanged)
+    );
+    for (version, path) in [1, 2].into_iter().zip(&paths) {
+        assert_eq!(
+            fs::read(vault_path.join(format!("secret-{version}.age"))).unwrap(),
+            committed_ciphertext(path).unwrap()
+        );
+    }
+    let signed =
+        crypto::Signed::parse(&fs::read(vault_path.join("manifest.jws")).unwrap()).unwrap();
+    let manifest: serde_json::Value = kit.writer.verifier().verify(&signed).unwrap();
+    assert_eq!(manifest["receipt_contract"], "installation");
+    for (index, version) in [1, 2].into_iter().enumerate() {
+        assert_eq!(
+            manifest["records"][index]["import_metadata_digest"],
+            digests[index]
+        );
+        assert_eq!(
+            manifest["acl"][index]["profile"],
+            serde_json::to_value(DeliveryProfile::installation(version)).unwrap()
+        );
+    }
+    drop(vault);
+    let reopened = store::Store::open(&vault_path, material).unwrap();
+    reopened
+        .check_imported_rotation(&paths[0], &paths[1])
+        .unwrap();
+    let copied = h.root.join("copied-input");
+    store::new_directory(&copied).unwrap();
+    store::write_new(
+        &copied.join(COMMITTED),
+        &committed_ciphertext(&paths[1]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        reopened.check_imported_rotation(&paths[0], &copied),
+        Err(ErrorCode::PolicyChanged)
+    );
+    let second = committed_ciphertext(&paths[1]).unwrap();
+    fs::write(
+        paths[1].join(COMMITTED),
+        committed_ciphertext(&paths[0]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        reopened.check_imported_rotation(&paths[0], &paths[1]),
+        Err(ErrorCode::PolicyChanged)
+    );
+    fs::write(paths[1].join(COMMITTED), second).unwrap();
+    reopened
+        .check_imported_rotation(&paths[0], &paths[1])
+        .unwrap();
+}
+
+#[cfg(feature = "application-slot")]
+#[test]
+fn rotation_constructor_rejects_reordered_duplicate_and_corrupted_import_capabilities() {
+    for variant in 0..5 {
+        let h = Harness::new();
+        let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+        let material = kit.broker_material();
+        let mut pair =
+            import_delivery_rotation_canaries(&h.root.join("one"), &h.root.join("two"), &material)
+                .unwrap();
+        match variant {
+            0 => pair.swap(0, 1),
+            1 => pair[1].review.entry.instance = pair[0].review.entry.instance,
+            2 => pair[1].review.broker.as_mut().unwrap().profile = DeliveryProfile::installation(1),
+            3 => pair[1].review.entry.bindings.recipient_generation = 0,
+            _ => {
+                let mut ciphertext = committed_ciphertext(&pair[1].review.destination).unwrap();
+                ciphertext[0] ^= 1;
+                fs::write(pair[1].review.destination.join(COMMITTED), ciphertext).unwrap();
+            }
+        }
+        let destination = h.root.join("vault");
+        assert_eq!(
+            store::Store::create_imported_rotation(&destination, material, pair).err(),
+            Some(ErrorCode::PolicyChanged)
+        );
+        assert!(!destination.exists());
+    }
+}
+
+#[cfg(feature = "application-slot")]
+#[test]
+fn second_import_rejects_the_first_canary_and_cannot_reuse_its_review() {
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    let material = kit.broker_material();
+    let mut ceremony = Ceremony::fixture(h.clock.clone()).unwrap();
+    ceremony.bindings = ImportVersion::Two.bindings();
+    let mut session = ImportSession::fixture(&ceremony, &h.destination(), &kit.storage).unwrap();
+    session.review.broker = Some(BrokerImportBinding::for_version(
+        &material,
+        ReceiptContract::Installation,
+        ImportVersion::Two,
+    ));
+    approve(&session);
+    assert_eq!(
+        session.import(
+            &mut Cursor::new(&canary_frame(store::CANARY_ONE.as_bytes()).0),
+            &session.review,
+            &kit.storage,
+            Fault::None
+        ),
+        Err(ErrorCode::ScopeDenied)
+    );
+    assert_eq!(
+        session.import(
+            &mut Cursor::new(&canary_frame(store::CANARY_TWO.as_bytes()).0),
+            &session.review,
+            &kit.storage,
+            Fault::None
+        ),
+        Err(ErrorCode::BudgetExhausted)
+    );
+    assert!(!h.destination().exists());
+}
+
+#[cfg(feature = "application-slot")]
+#[test]
+fn rotation_decode_rejects_changed_frozen_evidence_even_with_a_matching_metadata_digest() {
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    let material = kit.broker_material();
+    let [_, second] =
+        import_delivery_rotation_canaries(&h.root.join("one"), &h.root.join("two"), &material)
+            .unwrap();
+    let mutations: &[fn(&mut ImportReview)] = &[
+        |r| r.input_contract += 1,
+        |r| r.maximum_input_bytes += 1,
+        |r| r.entry.bindings.secret_version = 1,
+        |r| r.entry.bindings.recipient_generation = 0,
+        |r| r.entry.bindings.configuration_digest[0] ^= 1,
+        |r| r.entry.bindings.operator.enrollment_revision += 1,
+        |r| r.entry.expires_at += 1,
+        |r| r.entry.canary_use_limit += 1,
+        |r| r.entry.receipts[0].instance[0] ^= 1,
+        |r| r.entry.receipts[1].bindings.secret_version = 1,
+        |r| r.entry.receipts[2].observer = r.entry.bindings.agent.clone(),
+        |r| r.entry.receipts[3].observed_at += 1,
+        |r| r.entry.receipts[4].expires_at -= 1,
+        |r| r.broker.as_mut().unwrap().secret.version = 1,
+        |r| r.broker.as_mut().unwrap().profile.revision = 1,
+        |r| r.broker.as_mut().unwrap().profile.adapter_contract = 1,
+        |r| r.broker.as_mut().unwrap().profile.output_contract = 1,
+        |r| r.broker.as_mut().unwrap().vault_id.push('x'),
+        |r| r.storage_recipient.push('x'),
+        |r| r.broker = None,
+    ];
+    let input = Input::read(
+        &mut Cursor::new(&canary_frame(store::CANARY_TWO.as_bytes()).0),
+        || Ok(()),
+    )
+    .unwrap();
+    for mutate in mutations {
+        let mut review = second.review.clone();
+        mutate(&mut review);
+        let clear = envelope(&review, &input).unwrap();
+        let digest = crypto::hash(&serde_json::to_vec(&review).unwrap());
+        assert_eq!(
+            decode_imported_for(
+                &clear.0,
+                &digest,
+                &ImportVersion::Two.reference(),
+                &material,
+                ReceiptContract::Installation
+            )
+            .err(),
+            Some(ErrorCode::PolicyChanged)
+        );
+    }
+    let first_input = Input::read(
+        &mut Cursor::new(&canary_frame(store::CANARY_ONE.as_bytes()).0),
+        || Ok(()),
+    )
+    .unwrap();
+    let wrong_canary = envelope(&second.review, &first_input).unwrap();
+    let digest = crypto::hash(&serde_json::to_vec(&second.review).unwrap());
+    assert_eq!(
+        decode_imported_for(
+            &wrong_canary.0,
+            &digest,
+            &ImportVersion::Two.reference(),
+            &material,
+            ReceiptContract::Installation
+        )
+        .err(),
+        Some(ErrorCode::InvalidProviderResult)
+    );
+    let valid = envelope(&second.review, &input).unwrap();
+    assert_eq!(
+        decode_imported_for(
+            &valid.0,
+            &digest,
+            &ImportVersion::Two.reference(),
+            &material,
+            ReceiptContract::Acceptance
+        )
+        .err(),
+        Some(ErrorCode::PolicyChanged)
+    );
+    for version in [0, 3, u64::MAX] {
+        let mut reference = ImportVersion::Two.reference();
+        reference.version = version;
+        assert_eq!(
+            decode_imported_for(
+                &valid.0,
+                &digest,
+                &reference,
+                &material,
+                ReceiptContract::Installation
+            )
+            .err(),
+            Some(ErrorCode::InvalidProviderResult)
+        );
+    }
+}
+
+#[test]
+fn import_decode_rejects_unsupported_versions_before_fixture_arithmetic() {
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    let material = kit.broker_material();
+    let imported = import_delivery_canary(&h.destination(), &material).unwrap();
+    let clear = material
+        .storage
+        .decrypt(&committed_ciphertext(&h.destination()).unwrap())
+        .unwrap();
+    let digest = crypto::hash(&serde_json::to_vec(&imported.review).unwrap());
+    for version in [0, 3, u64::MAX] {
+        let mut reference = DeliveryParameters::fixture(1).secret;
+        reference.version = version;
+        assert_eq!(
+            decode_imported_for(
+                &clear.0,
+                &digest,
+                &reference,
+                &material,
+                ReceiptContract::Acceptance
+            )
+            .err(),
+            Some(ErrorCode::InvalidProviderResult)
+        );
+    }
+}
+
+#[cfg(feature = "application-slot")]
+#[test]
+fn rotation_decode_rejects_unknown_or_missing_frozen_metadata_fields() {
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    let material = kit.broker_material();
+    let [_, second] =
+        import_delivery_rotation_canaries(&h.root.join("one"), &h.root.join("two"), &material)
+            .unwrap();
+    let original = material
+        .storage
+        .decrypt(&committed_ciphertext(&second.review.destination).unwrap())
+        .unwrap();
+    let original_length = u32::from_be_bytes(original.0[8..12].try_into().unwrap()) as usize;
+    let original_metadata: serde_json::Value =
+        serde_json::from_slice(&original.0[12..12 + original_length]).unwrap();
+    for variant in 0..4 {
+        let mut changed = original_metadata.clone();
+        match variant {
+            0 => changed["unexpected"] = serde_json::json!(true),
+            1 => {
+                changed["entry"].as_object_mut().unwrap().remove("receipts");
+            }
+            2 => changed["entry"]["receipts"][0]["unexpected"] = serde_json::json!(true),
+            _ => changed["broker"]["unexpected"] = serde_json::json!(true),
+        }
+        let metadata = serde_json::to_vec(&changed).unwrap();
+        let mut clear = PrivateBytes(Vec::new());
+        clear.0.extend_from_slice(ENVELOPE_MAGIC);
+        clear
+            .0
+            .extend_from_slice(&(metadata.len() as u32).to_be_bytes());
+        clear.0.extend_from_slice(&metadata);
+        clear
+            .0
+            .extend_from_slice(&original.0[12 + original_length..]);
+        assert_eq!(
+            decode_imported_for(
+                &clear.0,
+                &crypto::hash(&metadata),
+                &ImportVersion::Two.reference(),
+                &material,
+                ReceiptContract::Installation
+            )
+            .err(),
+            Some(ErrorCode::PolicyChanged)
+        );
+    }
+}
+
+#[cfg(feature = "application-slot")]
+#[test]
+fn rotation_manifest_requires_two_distinct_imports_and_both_exact_installation_profiles() {
+    let h = Harness::new();
+    let kit = store::Kit::create(&h.root.join("kit")).unwrap();
+    let material = kit.broker_material();
+    let pair =
+        import_delivery_rotation_canaries(&h.root.join("one"), &h.root.join("two"), &material)
+            .unwrap();
+    let path = h.root.join("vault");
+    let store = store::Store::create_imported_rotation(&path, material.clone(), pair).unwrap();
+    drop(store);
+    let manifest_path = path.join("manifest.jws");
+    let signed = crypto::Signed::parse(&fs::read(&manifest_path).unwrap()).unwrap();
+    let original: serde_json::Value = kit.writer.verifier().verify(&signed).unwrap();
+    for variant in 0..7 {
+        let mut changed = original.clone();
+        match variant {
+            0 => {
+                changed["records"][1]["import_metadata_digest"] =
+                    changed["records"][0]["import_metadata_digest"].clone()
+            }
+            1 => {
+                changed["records"][1]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("import_metadata_digest");
+            }
+            2 => changed["receipt_contract"] = serde_json::json!("acceptance"),
+            3 => {
+                changed["acl"].as_array_mut().unwrap().pop();
+            }
+            4 => changed["acl"][1] = changed["acl"][0].clone(),
+            5 => changed["records"].as_array_mut().unwrap().reverse(),
+            _ => changed["acl"][1]["profile"]["adapter_contract"] = serde_json::json!(1),
+        }
+        fs::write(&manifest_path, kit.writer.sign(&changed).unwrap().bytes()).unwrap();
+        assert_eq!(
+            store::Store::open(&path, material.clone()).err(),
+            Some(ErrorCode::PersistenceUnavailable)
+        );
+    }
+    fs::write(&manifest_path, signed.bytes()).unwrap();
+    store::Store::open(&path, material).unwrap();
+}
+
 #[test]
 fn public_drill_has_closed_safe_results_and_only_ciphertext_on_disk() {
     let h = Harness::new();
