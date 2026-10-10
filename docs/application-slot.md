@@ -199,7 +199,8 @@ x86_64 with Rust 1.96.1, locked/offline dependencies. Formatting, default and
 all-feature all-target Clippy with warnings denied also passed. The integration test's JWS
 payload decoding checks tuple metadata only; fresh runtime inspection supplies
 cryptographic signature and installed-file validation. Final integrated
-aggregate and hosted evidence remain pending in the [verification record](verification.md).
+aggregate results and the exact-head hosted-CI requirement are recorded in
+[verification](verification.md).
 
 Fault injection is ordinary functional acceptance work. The five child exits
 are not power cuts or a complete short-write, syscall-error or storage-device

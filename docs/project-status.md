@@ -2,6 +2,31 @@
 
 Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
+## Fixed application-slot checkpoint (10 October 2026)
+
+The optional [application-slot drill](application-slot.md) now installs the actual
+imported public canary into a fixed file using directory-relative handles.
+A signed intent precedes staging; file sync, replacement and directory sync
+precede the signed installation receipt. Import, exact approval and receipt
+binding use distinct adapter/output contracts 2/2, preventing legacy encrypted
+acceptance from being counted as application installation.
+
+All 328 library tests and eight enabled CLI acceptance tests pass locally,
+including actual recipient exits at five installation boundaries and separately
+scoped two-version replacement. Default/vault-only refusal passed three tests
+each. Final default/all-feature aggregates have 163/449 passes plus the unchanged
+14 denied listener cases, with zero ignored tests; 1/28 doctests and all quality
+checks passed. Integration found and fixed an invalid-version arithmetic panic
+without relaxing its existing regression. Exact-source details and the later
+hosted-CI requirement are in [verification](verification.md).
+
+This is actual dummy file installation on an UNISOLATED development host.
+Read-only recovery distinguishes observed file version from completed receipt
+generation and preserves consumed uncertainty without replay. Protected input
+and custody, genuine human control, immutable isolated application identity,
+external recovery anchor, operational time/lifecycle/admission, live GitHub
+integration and assurance remain open. Real-key entry still refuses.
+
 ## Broker process service checkpoint (10 October 2026)
 
 The [fixed-canary process service](process-service.md) now drives actual bounded

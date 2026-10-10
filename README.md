@@ -88,6 +88,28 @@ briefly owns all disposable keys, approvals remain simulated, and journal time
 remains fixed fixture time. There is no listener or protected operational entry;
 all live-key gates remain false. See [ADR 0020](docs/adr/0020-process-owned-dummy-broker-service.md).
 
+## Fixed application-slot milestone
+
+The optional [application-slot drill](docs/application-slot.md) extends the
+process service by installing the actual imported canary into the fixed
+`application/provider-auth` file. Directory-relative operations use held handles;
+a signed intent precedes staging, and a signed installation receipt follows
+file sync, replacement and directory sync. Import, review and delivery bind
+adapter/output contracts 2/2, separate from legacy encrypted acceptance.
+
+```sh
+cargo run --locked --offline --features application-slot --bin aegis-application-slot -- /tmp/aegis-slot-new
+cargo run --locked --offline --features application-slot --bin aegis-application-slot -- inspect /tmp/aegis-slot-new
+```
+
+The application file intentionally contains the public canary. A valid pending
+intent can be inspected without completing or replaying installation; an
+uncertain broker outcome stays consumed. The normal composed drill installs
+one imported version, while focused tests exercise two-version replacement.
+This is a same-UID fixture, with no operational protected application, real-key
+entry or live provider. See [ADR 0021](docs/adr/0021-fixed-application-slot.md)
+and the remaining [operator decisions](docs/operator-live-trial-plan.md).
+
 ## What is being built
 
 The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. Protected application delivery is an essential additional product requirement, not an optional plaintext-export convenience. Its [design contract](docs/application-delivery.md) specifies reference-only proposals, immutable human approval, recipient enrollment, safe status, revocation limits, and adversarial acceptance gates. The optional vault feature exercises delivery interfaces using fixed fixtures; production entry, external recipient integration and OS protections remain unimplemented or unverified. A useful live provider operation and an operational portable `age` backend also remain release work.
@@ -105,6 +127,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 | [Integrated synthetic vault](docs/vault-delivery-spike.md) | Encrypted canary delivery/rotation through authenticated core policy and durable recovery |
 | [Composed fixed-canary flow](docs/composed-canary-flow.md) | Actual encrypted import through TLS approval, durable broker and fixed child receipt; retained NO-GO gates |
 | [Fixed-canary broker process service](docs/process-service.md) | Owned broker/client TLS I/O, supervised children and real response-loss regressions |
+| [Fixed application-file installation](docs/application-slot.md) | Actual canary file replacement, signed installation evidence and read-only uncertainty inspection |
 | [Operator-owned deployment](docs/operator-owned-deployment.md) | Required privilege separation, canary verification and later user key-entry ceremony |
 | [Application authentication and ACLs](docs/access-control.md) | Vendor-neutral identity/policy, optional private networking, proxy trust and acceptance gates |
 | [Readiness and deployment choices](docs/readiness-checklist.md) | Consolidated missing end-to-end gates, required permissions, verification plan and effort estimate |

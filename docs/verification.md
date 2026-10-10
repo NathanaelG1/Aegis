@@ -1,5 +1,80 @@
 # Verification and evidence
 
+## Fixed application-slot checkpoint (2026-10-10)
+
+Local tested runtime and acceptance-test source:
+`a36dad47088234492c6659418ca83aa71b7f0d01`. The increment starts from verified
+PR #4 head `210a1b32d2986ce8d6673baeafcfe69399d0adb8`, tree
+`fa4d89c07531d3333b36cbb8b52f3813d1e4362e` (local equivalent `7e64b81`).
+It is stacked on the process-service branch. This record captures local
+validation before publication; exact-head hosted CI must be checked separately
+on the associated draft PR. Historical green runs do not cover this source.
+
+Environment: Debian 13.6 Linux x86_64 development workspace, official Rust/Cargo
+1.96.1. Cargo.lock SHA-256 is
+`b3f92fa557f916e1c29e56603012eae4931f3afca0090764b1ccefe06f4ce2bf`.
+The optional `application-slot` feature adds pinned Rustix 1.1.5 and selects
+linux-raw-sys 0.12.1 on Linux. The [inventory](dependency-inventory-linux-application-slot.json)
+records 158 application-slot/all-feature packages; default/storage/signing/vault-only
+selected graphs remain unchanged at 19/127/39/156. The lock also resolves errno
+for other configurations. No toolchain, CI permission or deployment change occurs.
+
+- All 328 all-feature library tests passed. The eleven new results comprise six
+  directory-handle tests, three slot/receipt/import-contract tests, one actual
+  process crash test with five exit boundaries, and the profile-version guard
+  regression found during aggregate integration.
+- Public CLI acceptance passed eight enabled tests. Default and vault-only
+  refusal suites passed three each; explicit application-slot and all-feature
+  runs passed eight each. Actual imported ciphertext is unchanged between input
+  and vault, and the installed file contains the expected public version-one
+  canary. Review/import/manifest/capsule/receipt bind adapter/output contracts
+  2/2; the separate profile revision remains one. Legacy acceptance is refused
+  as installation evidence.
+- The normal process composition verifies one installation/use, generation and
+  observed version one, three remaining uses, duplicate reuse, fresh
+  authentication and durable revoke. Read-only inspection does not change
+  retained bytes, inode, mode or modification time, repair data, or restore
+  authority. Invalid/missing files, incorrect installed generation and legacy
+  receipt substitution fail closed. Marker/output and Linux process-cleanup
+  observations remain limited functional evidence.
+- A separate two-version fixture uses the existing broker authority to exercise
+  replacement. The new file has a new inode; a held prior descriptor still reads
+  the prior canary. The exact old receipt can be replayed without rolling the
+  installed file back. This is not version-two imported/TLS process composition.
+- Actual recipient exits after intent sync, staged-file sync, rename, directory
+  sync and signed-completion sync each retain one consumed unknown broker use,
+  three remaining uses, exact duplicate reuse and cold-admission refusal. A
+  fresh inspector reports observed file version separately from completed
+  generation and pending intent. It never creates a completion receipt or
+  retries an uncertain installation. The [slot contract](application-slot.md)
+  records the five tuples and distinguishes process exits from power cuts or a
+  full syscall/storage-error matrix.
+- Initial aggregate integration caught a real regression: fixture construction
+  preceded the version bound, so the existing invalid-version-zero test panicked.
+  The guard now runs before arithmetic; the original case and added zero/three/
+  maximum-version checks for both receipt contracts pass. No assertion was
+  removed or relaxed. The final full rerun, not that failed initial run, supplies
+  the results here.
+- Full default/all-feature all-target runs with `--no-fail-fast` produced
+  163/449 passes, each with exactly the same 14 locally denied listener cases
+  and zero ignored tests. Failure names match the preceding checkpoint;
+  permission errors remain present. Both local aggregate commands therefore
+  fail, and the hosted Linux run must supply the full listener result.
+- Default/all-feature doctests passed 1/28. Formatting, unrestricted
+  all-target/all-feature Clippy and all-feature rustdoc with warnings denied
+  passed. Focused default and vault-only Clippy also passed before integration.
+
+The actual application file intentionally contains a public canary. Every
+process, file and disposable key remains under the development UID/control
+plane. Handle-relative operations and signed installation receipts do not prove
+protected custody, immutable application code/configuration or independent
+human approval. The policy clock remains fixed fixture time; only transport and
+supervision use actual elapsed deadlines. Operational entry/custody, human
+client/enrollment, deployed admission/time, independent rollback anchor,
+lifecycle/provider integration and host assurance remain open. All live-key
+and protected-deployment gates remain false. The stopped independent review
+was not resumed or replaced by these ordinary implementation tests.
+
 ## Broker process service checkpoint (2026-10-10)
 
 Local tested runtime and acceptance-test commit:
