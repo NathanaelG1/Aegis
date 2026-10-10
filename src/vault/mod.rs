@@ -13,6 +13,7 @@
 //! use aegis::vault::crypto::PrivateBytes;
 //! ```
 mod auth;
+pub mod composed;
 mod crypto;
 pub mod custody;
 pub mod deployment;

@@ -48,13 +48,26 @@ The optional vault feature now includes three executable mechanisms:
 - [Bounded encrypted import](docs/protected-entry.md), using zeroizing input buffers, frozen review metadata and ciphertext-only no-clobber publication. The only accepted value is a built-in disposable canary.
 - [Separate recipient execution](docs/recipient-process.md), using a fixed child executable, recipient-only runtime custody, bounded inherited IPC and the existing durable reservation/receipt path.
 
-The import and transport/recipient drills remain separate experiments. They do
-not form an operational human-entry-to-isolated-application service. The child
-shares the development UID and host control plane and is explicitly reported as
-UNISOLATED. Protected human interaction, operational custody/recovery, an
-independent rollback anchor and operator-controlled host evidence remain open;
-real-key entry is unconditionally refused. See [ADR 0018](docs/adr/0018-protected-mechanism-development.md)
-and the [operator trial plan](docs/operator-live-trial-plan.md).
+The standalone drills remain available. A [composed canary flow](docs/composed-canary-flow.md)
+also consumes the actual encrypted import, authenticates agent/admin approval
+and invocation through TLS, and delivers the signed age capsule to the fixed
+child over inherited local IPC. It exercises one imported version, duplicate
+reuse, fresh authentication and durable revoke. TLS terminates at the parent
+fixture's control endpoints; the recipient child does not terminate TLS.
+
+```sh
+cargo run --locked --offline --all-features --bin aegis-composed-canary -- /tmp/aegis-composed-new
+cargo run --locked --offline --all-features --bin aegis-composed-canary -- inspect /tmp/aegis-composed-new
+```
+
+The destination must be new and absolute. This accepts only a built-in canary
+and reports fixture evidence. The child shares the development UID and host
+control plane and is explicitly UNISOLATED. Protected human interaction,
+operational custody/recovery, an independent rollback anchor and observed
+operator-host protection remain open; real-key entry is unconditionally refused.
+See [ADR 0018](docs/adr/0018-protected-mechanism-development.md),
+[ADR 0019](docs/adr/0019-composed-canary-delivery.md), and the
+[operator trial plan](docs/operator-live-trial-plan.md).
 
 ## What is being built
 
@@ -71,6 +84,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 | [Product and policy contracts](docs/contracts.md) | Authority objects, exact bindings, lifecycle, concurrency, retry, and error behavior |
 | [Architecture](docs/architecture.md) | Component boundaries and current versus planned interfaces |
 | [Integrated synthetic vault](docs/vault-delivery-spike.md) | Encrypted canary delivery/rotation through authenticated core policy and durable recovery |
+| [Composed fixed-canary flow](docs/composed-canary-flow.md) | Actual encrypted import through TLS approval, durable broker and fixed child receipt; retained NO-GO gates |
 | [Operator-owned deployment](docs/operator-owned-deployment.md) | Required privilege separation, canary verification and later user key-entry ceremony |
 | [Application authentication and ACLs](docs/access-control.md) | Vendor-neutral identity/policy, optional private networking, proxy trust and acceptance gates |
 | [Readiness and deployment choices](docs/readiness-checklist.md) | Consolidated missing end-to-end gates, required permissions, verification plan and effort estimate |
@@ -95,7 +109,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 
 ## Platform and release status
 
-The original full checkpoint was tested on macOS 26.6.2 arm64 with Rust 1.96.1. The subsequent GitHub synthetic slice and existing non-listener suites pass on Linux x86_64; 14 existing interface tests remain blocked there by denied Unix listener binding. See [verification](docs/verification.md) for exact checks and limits. A later private Linux synthetic pilot passed all baseline tests and actual GitHub foreground/MCP v2 workflow on source `e353a6b`; this is workflow evidence, not protection from its current agent administrative access. Windows transport support is absent. Protected application delivery, independent human authentication, desktop lifecycle handling, protected headless approval, storage durability, and OS isolation remain unimplemented or unverified. Linux, macOS, and Windows delivery arrangements are proposals requiring separate platform tests.
+The original full checkpoint was tested on macOS 26.6.2 arm64 with Rust 1.96.1. Later exact-source hosted Linux checks include all Unix interface tests; the development workspace still denies 14 listener-dependent cases. See [verification](docs/verification.md) for each source, result and platform limit. A private Linux synthetic pilot also passed its baseline tests and actual GitHub foreground/MCP v2 workflow on source `e353a6b`; this is workflow evidence, not protection from its agent administrative access. Windows transport support is absent. Protected application delivery, independent human authentication, desktop lifecycle handling, protected headless approval, operational storage durability, and OS isolation remain unimplemented or unverified. Linux, macOS, and Windows delivery arrangements are proposals requiring separate platform tests.
 
 Aegis source and documentation are available under the [MIT license](LICENSE). Third-party dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md) and the dependency inventory. Public source availability does not establish a reviewed production release. The [security policy](SECURITY.md) is a draft for this experimental project. Contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -1,5 +1,65 @@
 # Verification and evidence
 
+## Composed canary checkpoint (2026-10-09)
+
+Local tested runtime and acceptance-test commit:
+`cbcfa1ea110bd62ec6ad17a5de5066fa294ea407`, based on PR #2 head
+`0ab8a1ac9a385ed7d9fff4b6f5c6efa0727e3303`. This increment is stacked on the
+unmerged protected-mechanism PR. Publication and exact-head CI are recorded on
+the new draft PR; no earlier CI run covers this increment.
+
+The development workspace is Debian 13.6 Linux x86_64 with official Rust/Cargo
+1.96.1. Cargo.lock is byte-identical to the preceding checkpoint, SHA-256
+`90e27be2374c74135cd31fe1285db74bdd264d62b64673b217080989ca9de55b`.
+No dependency or feature-graph change is introduced.
+
+- All 300 all-feature library tests passed, including seven new import-binding
+  and composed-store tests. The original standalone TLS, entry, process,
+  two-version store and durable lifecycle regressions remain enabled.
+- Independent public-CLI acceptance passed 6 all-feature and 2 default tests.
+  The actual imported `input/record.age` equals `vault/secret-1.age`; there is no
+  regenerated version-two record. Two authenticated TLS protocol roles drive
+  approval and invocation, and the fixed child receives the signed age capsule
+  over inherited IPC. The result is one delivery/use, generation one, three
+  remaining uses, duplicate reuse, fresh authentication and durable revoke.
+- A fresh CLI process inspected the signed retained evidence without changing
+  fixture files or restoring sessions. Missing/corrupt input or stored
+  ciphertext was refused without altering the remaining files. Existing paths,
+  repeated execution, malformed arguments and unavailable-feature execution
+  refused. Linux root-scoped process observations found no surviving fixture
+  child. Captured outputs and retained files contained none of the tested canary
+  or input markers; this is a limited observation, not an isolation proof.
+- Full default/all-feature all-target runs with `--no-fail-fast` produced
+  158/406 passes, each with the same 14 named listener-dependent failures and
+  zero ignored tests. The failure names match the preceding checkpoint;
+  direct socket binds report `EPERM`, and broker startup reports unavailable.
+  The local aggregate remains blocked. No test was removed or relaxed.
+- Default/all-feature doctests passed 1/27. Formatting, all-target/all-feature
+  Clippy with warnings denied and all-feature rustdoc with warnings denied
+  passed. The composed executable and separate `inspect` invocation also
+  passed an independent smoke.
+
+Failure evidence has distinct scopes. Private import tests reject changed
+vault/storage/writer/recipient/receipt-key, reference/version, profile/slot,
+generation, metadata and ciphertext bindings. A corrupt stored import detected
+by storage-view validation is rejected **before reservation** with zero use and
+no handoff. An imported-record test using the existing in-process recipient
+fault after durable acceptance retains one consumed use, generation one and an
+unknown outcome; cold runtime reconstruction refuses with
+`ReconciliationRequired`. That unit test does not inject a lost response across
+the full TLS/child-process composition. Existing TLS and process failure suites
+remain separate regression evidence; complete cross-boundary crash/fault and
+operator-host testing are outstanding.
+
+The fixture's agent/admin TLS peers remain in the parent process. The recipient
+is a same-UID child without a TLS endpoint. All actors remain controlled by the
+development account, and the report remains UNISOLATED with custody,
+human-presence, host-protection and real-key-readiness flags false. The
+[composed contract](composed-canary-flow.md) and [operator plan](operator-live-trial-plan.md)
+separate further CODE work, precise OPERATOR choices and the unresolved
+independent assurance gate. These functional checks do not resume or replace
+the previously stopped independent review.
+
 ## Protected mechanism checkpoint (2026-10-09)
 
 Local tested runtime/tooling commit:
@@ -15,9 +75,8 @@ Rust/Cargo 1.96.1. Cargo.lock SHA-256:
   156/393 passes respectively, each with 14 failures and zero ignored tests.
   The failed names exactly match the freshly rerun baseline's Unix-listener
   cases blocked by `EPERM`. Neither aggregate nor the local check script is a
-  pass. Existing hosted CI is used for full listener coverage, with its exact
-  head and outcome recorded on the draft PR; the earlier hosted pass below does
-  not cover this new source.
+  pass. The later exact-head hosted run below supplies full listener coverage;
+  its success does not change the local restriction.
 - Default/all-feature doctests passed 1/26 tests. Formatting, all-feature and
   all-target Clippy with warnings denied, and rustdoc with warnings denied passed.
 - `tls_spike` completed actual TLS 1.3 mutual authentication, signed agent/admin
@@ -34,6 +93,15 @@ Rust/Cargo 1.96.1. Cargo.lock SHA-256:
   binary. The default, storage-only and signing-only dependency graphs are
   unchanged when both sources use the corrected Cargo-tree inventory method;
   the all-feature graph adds 12 package identities (144 to 156).
+
+The published source `0ab8a1ac9a385ed7d9fff4b6f5c6efa0727e3303` subsequently
+passed [hosted CI run 38002090476](https://github.com/NathanaelG1/Aegis/actions/runs/38002090476)
+on Ubuntu 24.04.5 LTS x86_64, runner image `20261004.327.1`, with Rust/Cargo
+1.96.1 and the lockfile above. All 170 default and 407 all-feature all-target
+tests passed, including all 21 Unix interface cases in each configuration,
+with zero failed or ignored tests. Default/all-feature doctests passed 1/26;
+formatting, Clippy and rustdoc passed. This is the separate-mechanism checkpoint,
+not evidence for the later composed import path.
 
 The three mechanisms are separate fixed-fixture experiments. The import is not
 connected to an operational vault, the TLS fixture's recipient remains local,

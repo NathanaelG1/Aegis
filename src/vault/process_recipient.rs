@@ -130,9 +130,9 @@ struct Reply {
     outcome: Acceptance,
     ack: Option<String>,
 }
-struct Snapshot {
-    generation: u64,
-    received: BTreeMap<RequestId, String>,
+pub(super) struct Snapshot {
+    pub(super) generation: u64,
+    pub(super) received: BTreeMap<RequestId, String>,
 }
 
 /// Owns the sole child and its inherited socket. No path listener, shell, executable
@@ -309,7 +309,7 @@ pub(super) struct ProcessRecipient {
     session: Mutex<Session>,
 }
 impl ProcessRecipient {
-    fn start(
+    pub(super) fn start(
         material: Arc<BrokerMaterial>,
         custody: &Path,
         state: &Path,
@@ -326,7 +326,7 @@ impl ProcessRecipient {
         recipient.snapshot()?;
         Ok(recipient)
     }
-    fn snapshot(&self) -> Result<Snapshot, ErrorCode> {
+    pub(super) fn snapshot(&self) -> Result<Snapshot, ErrorCode> {
         let mut session = self
             .session
             .lock()
@@ -573,12 +573,7 @@ pub fn run_synthetic_process_drill(
     custody: &Path,
     state: &Path,
 ) -> Result<ProcessRecipientReport, ErrorCode> {
-    let mut bootstrap = Session::spawn("bootstrap", custody, None)?;
-    if read_timed_frame(&mut bootstrap.stream, Instant::now() + BOOTSTRAP_TIMEOUT)?.0 != b"created"
-    {
-        return Err(ErrorCode::PersistenceUnavailable);
-    }
-    drop(bootstrap);
+    bootstrap_in_child(custody)?;
     let mut duplicate_reused = true;
     let mut unauthenticated = true;
     let mut transcript = String::new();
@@ -673,6 +668,15 @@ pub fn run_synthetic_process_drill(
         protected_deployment_verified: false,
         ready_for_real_keys: false,
     })
+}
+
+pub(super) fn bootstrap_in_child(custody: &Path) -> Result<(), ErrorCode> {
+    let mut bootstrap = Session::spawn("bootstrap", custody, None)?;
+    if read_timed_frame(&mut bootstrap.stream, Instant::now() + BOOTSTRAP_TIMEOUT)?.0 != b"created"
+    {
+        return Err(ErrorCode::PersistenceUnavailable);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

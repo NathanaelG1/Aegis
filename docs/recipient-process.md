@@ -2,6 +2,12 @@
 
 The optional Unix `vault-spike` increment runs the existing fixed-canary recipient in a separate child process. It exercises real process creation, inherited IPC, age decryption, signed durable receipt storage, cold reopen, rotation and revocation. It is still **UNISOLATED**, with no real credentials, live provider, independent human presence, protected custody or verified host boundary.
 
+The [composed canary](composed-canary-flow.md) reuses this same process transport
+and durable recipient for one actual imported record. Agent/admin TLS terminates
+in its parent fixture; the signed age capsule and receipt cross the inherited
+socketpair. The composed flow exercises version one only. The standalone
+two-version rotation drill below remains a separate regression.
+
 ## Run the closed drill
 
 Use three new paths beneath a temporary directory. The first path stores the dummy broker state, the second stores separate dummy custody roles, and the third stores the recipient's durable encrypted acceptance journal.
