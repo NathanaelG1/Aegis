@@ -2,7 +2,29 @@
 
 Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
-## Latest custody checkpoint (8 October 2026)
+## Protected mechanism checkpoint (9 October 2026)
+
+The [TLS experiment](tls-transport.md) now carries the existing approved canary
+delivery through actual mutually authenticated TLS 1.3 records. The
+[input/import experiment](protected-entry.md) adds bounded zeroizing input and
+ciphertext-only no-clobber publication. The [recipient child](recipient-process.md)
+loads its own role material and uses the existing durable reservation/receipt
+path across process boundaries. These remain separate fixed-fixture experiments;
+an operational protected human-to-recipient service is not available.
+
+Integrated local checks passed all 293 library tests, 26 doctests, formatting,
+Clippy and rustdoc. All three examples and the legacy default CLI demo passed.
+Full local default/all-feature runs produced 156/393 passes plus the same 14
+restricted listener failures and no ignored tests. Exact-source hosted CI is
+tracked on the draft PR; see [verification](verification.md).
+
+The recipient explicitly reports UNISOLATED because it shares the development
+UID and host control plane. The operator-controlled Linux host, independently
+authenticated human client, operational enrollment/custody/recovery, external
+anchor, actual provider adapter and required assurance remain open. No real-key
+entry, access change, deployment or live provider call has been enabled.
+
+## Previous custody checkpoint (8 October 2026)
 
 The separate-role custody path now drives the existing authenticated durable vault/protocol without loading an all-role fixture kit. It exercises exact signed approval, delivery, cold rotation and revoke; the deployment-prerequisite API remains report-only NO-GO. The first use case remains a GitHub App limited to selected personal repositories, with no organization access; see the [operator trial plan](operator-live-trial-plan.md).
 

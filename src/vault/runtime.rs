@@ -2,6 +2,7 @@ use super::{
     auth::{self, Challenge, Gate, Purpose, Receipt, Review, AGENT},
     crypto::Signed,
     model::*,
+    process_recipient::RecipientEndpoint,
     store::{Kit, Recipient, Store},
 };
 use crate::{
@@ -22,7 +23,7 @@ struct Work {
 /// Private adapter. Agent and admin proof hooks run inside the main core lock.
 pub(crate) struct Adapter {
     pub(super) store: Arc<Store>,
-    pub(super) recipient: Arc<Recipient>,
+    pub(super) recipient: RecipientEndpoint,
     pub(super) gate: Gate,
     profile: DeliveryProfile,
     clock: Arc<dyn Clock>,
@@ -36,11 +37,11 @@ impl Adapter {
         profile: DeliveryProfile,
         clock: Arc<dyn Clock>,
         store: Arc<Store>,
-        recipient: Arc<Recipient>,
+        recipient: RecipientEndpoint,
         enrollment: &auth::Enrollment,
     ) -> Result<Self, ErrorCode> {
         store.ready()?;
-        store.check_recipient(&recipient)?;
+        recipient.check_store(&store)?;
         Ok(Self {
             gate: Gate::new(instance, profile.clone(), clock.clone(), enrollment)?,
             profile,
@@ -159,8 +160,8 @@ impl Adapter {
         {
             return Err(ErrorCode::OutcomeUnknown);
         }
-        self.store
-            .deliver(&d.request_id, &self.recipient, self.clock.now())
+        self.recipient
+            .deliver(&self.store, &d.request_id, self.clock.now())
     }
     pub(crate) fn authorize_revoke(&self) -> Result<(), ErrorCode> {
         let proof = self.gate.authorize_revoke()?;
@@ -357,10 +358,11 @@ impl Drop for Host {
 pub(super) fn assemble_runtime(
     enrollment: auth::Enrollment,
     store: Arc<Store>,
-    recipient: Arc<Recipient>,
+    recipient: impl Into<RecipientEndpoint>,
     version: u64,
     clock: Arc<dyn Clock>,
 ) -> Result<(Arc<Control>, AgentClient, Arc<Adapter>), ErrorCode> {
+    let recipient = recipient.into();
     if !matches!(version, 1 | 2) {
         return Err(ErrorCode::InvalidRequest);
     }

@@ -38,7 +38,23 @@ The optional [vault-to-recipient exercise](docs/vault-delivery-spike.md) now joi
 
 ## Access-control direction
 
-The planned network API uses [vendor-neutral application authentication and exact ACLs](docs/access-control.md), with independent human control. Operators may add their own private networking; network membership or an IP allowlist never grants application access. HTTP/TLS, remote authentication and configurable ACL enforcement are not implemented. The existing local synthetic workflow remains unchanged.
+The planned network API uses [vendor-neutral application authentication and exact ACLs](docs/access-control.md), with independent human control. Operators may add their own private networking; network membership or an IP allowlist never grants application access. A [TLS 1.3 fixture](docs/tls-transport.md) now carries the existing vault protocol over mutually authenticated encrypted records. It has no network listener, operational enrollment or independent human identity. The deployed network API and configurable operational ACLs remain unavailable.
+
+## Protected mechanism milestone
+
+The optional vault feature now includes three executable mechanisms:
+
+- [Mutually authenticated TLS](docs/tls-transport.md) with exact fixture peer/role binding and exporter-bound frames, carrying a reviewed canary delivery through the existing protocol.
+- [Bounded encrypted import](docs/protected-entry.md), using zeroizing input buffers, frozen review metadata and ciphertext-only no-clobber publication. The only accepted value is a built-in disposable canary.
+- [Separate recipient execution](docs/recipient-process.md), using a fixed child executable, recipient-only runtime custody, bounded inherited IPC and the existing durable reservation/receipt path.
+
+The import and transport/recipient drills remain separate experiments. They do
+not form an operational human-entry-to-isolated-application service. The child
+shares the development UID and host control plane and is explicitly reported as
+UNISOLATED. Protected human interaction, operational custody/recovery, an
+independent rollback anchor and operator-controlled host evidence remain open;
+real-key entry is unconditionally refused. See [ADR 0018](docs/adr/0018-protected-mechanism-development.md)
+and the [operator trial plan](docs/operator-live-trial-plan.md).
 
 ## What is being built
 

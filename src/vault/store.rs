@@ -512,7 +512,7 @@ fn validate_review(r: &Review) -> Result<(), ErrorCode> {
     }
     Ok(())
 }
-fn validate_ack(
+pub(super) fn validate_ack(
     a: &Ack,
     vault: &str,
     id: &RequestId,
@@ -1273,7 +1273,7 @@ pub(super) struct Recipient {
     directory: PathBuf,
     state: Mutex<RecipientState>,
 }
-enum RecipientOutcome {
+pub(super) enum RecipientOutcome {
     Acknowledged(Signed),
     Rejected,
     Unknown,
@@ -1438,6 +1438,25 @@ impl Recipient {
         }
         Ok(())
     }
+    /// Public-only receipts for a signed process status. No capsule or slot value.
+    pub(super) fn process_receipts(&self) -> Result<(u64, Vec<String>), ErrorCode> {
+        let state = self
+            .state
+            .lock()
+            .map_err(|_| ErrorCode::ReconciliationRequired)?;
+        if state.failed {
+            return Err(ErrorCode::ReconciliationRequired);
+        }
+        self.check_storage_view(&state)?;
+        Ok((
+            state.generation,
+            state
+                .received
+                .values()
+                .map(|(_, ack)| ack.clone())
+                .collect(),
+        ))
+    }
     pub fn generation(&self) -> Result<u64, ErrorCode> {
         let s = self
             .state
@@ -1448,7 +1467,7 @@ impl Recipient {
         }
         Ok(s.generation)
     }
-    fn accept(&self, signed: Signed) -> RecipientOutcome {
+    pub(super) fn accept(&self, signed: Signed) -> RecipientOutcome {
         let Ok(mut s) = self.state.lock() else {
             return RecipientOutcome::Unknown;
         };
@@ -1671,11 +1690,51 @@ impl Store {
         }
         Ok(())
     }
+    /// Compare an authenticated process snapshot against broker history. This
+    /// never opens a recipient role, capsule, plaintext slot or recipient file.
+    pub(super) fn check_process_receipts(
+        &self,
+        received: &BTreeMap<RequestId, String>,
+    ) -> Result<(), ErrorCode> {
+        let w = self
+            .writer
+            .lock()
+            .map_err(|_| ErrorCode::PersistenceUnavailable)?;
+        for (id, op) in &w.history.operations {
+            if op.outcome == Some(Outcome::Delivered) && received.get(id) != op.capsule.as_ref() {
+                return Err(ErrorCode::ReconciliationRequired);
+            }
+        }
+        for (id, digest) in received {
+            let op = w
+                .history
+                .operations
+                .get(id)
+                .ok_or(ErrorCode::ReconciliationRequired)?;
+            if op.phase != Phase::Handing
+                || op.capsule.as_ref() != Some(digest)
+                || op.outcome == Some(Outcome::Rejected)
+            {
+                return Err(ErrorCode::ReconciliationRequired);
+            }
+        }
+        Ok(())
+    }
     pub fn deliver(
         &self,
         id: &RequestId,
         recipient: &Recipient,
         at: u64,
+    ) -> Result<DeliveryProjection, ErrorCode> {
+        self.deliver_via(id, at, |capsule| recipient.accept(capsule))
+    }
+    /// The reservation, handoff and terminal receipt checks stay in the durable
+    /// broker. A transport only exchanges the already-built encrypted capsule.
+    pub(super) fn deliver_via(
+        &self,
+        id: &RequestId,
+        at: u64,
+        handoff: impl FnOnce(Signed) -> RecipientOutcome,
     ) -> Result<DeliveryProjection, ErrorCode> {
         let mut w = self
             .writer
@@ -1751,9 +1810,8 @@ impl Store {
         )?;
         // After this point the recipient may have installed a credential. Panic/invalid
         // acknowledgement or failed terminal persistence must retain consumed uncertainty.
-        let outcome =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| recipient.accept(capsule)))
-                .unwrap_or(RecipientOutcome::Unknown);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handoff(capsule)))
+            .unwrap_or(RecipientOutcome::Unknown);
         let (terminal, ack, result) = match outcome {
             RecipientOutcome::Acknowledged(signed) => {
                 let valid = self.kit.receipt.verify::<Ack>(&signed).and_then(|ack| {

@@ -6,6 +6,7 @@
 use super::{
     auth::{self, AdminSession, Purpose, Review},
     crypto::Signed,
+    process_recipient::RecipientEndpoint,
     runtime::{assemble_runtime, Adapter},
     store::{Kit, Recipient, Store},
 };
@@ -210,7 +211,7 @@ impl SyntheticProtocol {
     pub(super) fn assemble(
         enrollment: auth::Enrollment,
         store: Arc<Store>,
-        recipient: Arc<Recipient>,
+        recipient: impl Into<RecipientEndpoint>,
         version: u64,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, ErrorCode> {

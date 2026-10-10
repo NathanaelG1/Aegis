@@ -198,12 +198,12 @@ pub fn bootstrap_synthetic_custody(path: &Path) -> Result<CustodyBootstrapReport
 
 // A broker loader never takes an actor or recipient-private path. Its public
 // enrollment is trusted fixture configuration, not caller-supplied wire authority.
-struct BrokerRole {
-    material: Arc<BrokerMaterial>,
-    enrollment: Enrollment,
+pub(super) struct BrokerRole {
+    pub(super) material: Arc<BrokerMaterial>,
+    pub(super) enrollment: Enrollment,
 }
 impl BrokerRole {
-    fn open(path: &Path) -> Result<Self, ErrorCode> {
+    pub(super) fn open(path: &Path) -> Result<Self, ErrorCode> {
         let d: BrokerDocument = read_role(path)?;
         validate_header(d.schema, &d.kind, BROKER_KIND, &d.vault_id)?;
         let storage = identity(&d.storage)?;
@@ -238,7 +238,7 @@ impl BrokerRole {
         })
     }
 }
-fn open_recipient_role(path: &Path) -> Result<Arc<RecipientMaterial>, ErrorCode> {
+pub(super) fn open_recipient_role(path: &Path) -> Result<Arc<RecipientMaterial>, ErrorCode> {
     let d: RecipientDocument = read_role(path)?;
     validate_header(d.schema, &d.kind, RECIPIENT_KIND, &d.vault_id)?;
     Ok(Arc::new(RecipientMaterial {
@@ -470,6 +470,61 @@ fn invocation(
         "invoke_approved",
         json!({"prepared_request_id":id,"proof":agent.proof(&c)?}),
     )
+}
+
+/// Simulated actor ceremony for the fixed process drill. Runtime constructors
+/// never load these signers and this helper never opens recipient custody.
+pub(super) fn process_fixture_round(
+    p: &SyntheticProtocol,
+    custody: &Path,
+    vault_id: &str,
+    version: u64,
+) -> Result<(OperationRunView, bool, bool), ErrorCode> {
+    let unauthenticated_denied = p
+        .agent
+        .handle(
+            &frame(
+                "prepare_operation",
+                prepare_input("process-before-auth", version)?,
+            )?
+            .0,
+        )
+        .error
+        == Some(ErrorCode::AuthenticationRequired);
+    let agent = ActorRole::open(&custody.join("agent"), AGENT_KIND, vault_id)?;
+    let admin = ActorRole::open(&custody.join("admin"), ADMIN_KIND, vault_id)?;
+    connect(p, &agent, &admin)?;
+    let id = prepare(
+        p,
+        if version == 1 {
+            "process-install"
+        } else {
+            "process-rotate"
+        },
+        version,
+    )?;
+    approve(p, &admin, id)?;
+    let input = invocation(p, &agent, id)?;
+    let first = run(p.agent.handle(&input.0))?;
+    let duplicate_reused = run(p.agent.handle(&input.0))? == first;
+    Ok((first, duplicate_reused, unauthenticated_denied))
+}
+
+pub(super) fn process_fixture_revoke(
+    p: &SyntheticProtocol,
+    custody: &Path,
+    vault_id: &str,
+) -> Result<(), ErrorCode> {
+    let admin = ActorRole::open(&custody.join("admin"), ADMIN_KIND, vault_id)?;
+    let c = challenge(p.admin.handle(&frame("revoke_challenge", json!({}))?.0))?;
+    if matches!(
+        p.admin.handle(&frame("revoke", admin.proof(&c)?)?.0).result,
+        Some(ProtocolResult::Revoked)
+    ) {
+        Ok(())
+    } else {
+        Err(ErrorCode::BrokerUnavailable)
+    }
 }
 
 /// Bootstrap NEW dummy custody/state, deliver, cold-start and rotate, then durably

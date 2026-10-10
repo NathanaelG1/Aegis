@@ -2,6 +2,17 @@
 
 This document separates the synthetic foundation's intended invariants from future release requirements. The executable tests and [verification record](verification.md) determine what has actually been demonstrated. No contract below authorizes real credentials, provider calls, or production use.
 
+The 9 October [mechanism milestone](adr/0018-protected-mechanism-development.md)
+adds actual [TLS records](tls-transport.md), [bounded encrypted import](protected-entry.md)
+and a [separate recipient process](recipient-process.md) using fixed canaries.
+The existing core remains the delivery authority: the process handoff follows
+durable reservation, correlated receipts determine the closed result, and
+uncertainty retains the consumed use. Certificate enrollment chooses protocol
+role before application parsing; it does not replace signed actor proofs or
+genuine human approval. The standalone input/import drill is not connected to
+an operational vault. Same-UID process separation and fixture identities do not
+meet the protected-deployment contract.
+
 Protected agent-blind application delivery is required but not yet implemented or verified. The operation objects and lifecycle below describe the current synthetic core. The separate [application-delivery contract](application-delivery.md) proposes typed reference-only proposal, approval, delivery, status and revocation workflows; it introduces no current wire methods.
 
 ## Authority objects

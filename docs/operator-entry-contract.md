@@ -40,7 +40,7 @@ The private state machine is:
 1. `Collecting`: accept exact, bounded fixture receipts.
 2. `Frozen`: retain an immutable copy of all five receipts, bindings, instance, earliest expiry and a one-use canary limit. No additional or replacement receipt is accepted.
 3. `Approved`: compare the submitted review with that exact frozen value, and compare the actor with the bound operator role. A name, changed review, other role or old enrollment does not satisfy this check. This remains simulated approval, not proof of a human action.
-4. `CanaryReserved`: consume the sole use under the same mutex used by cancellation. Return a private, non-cloneable metadata token that no broker dispatcher accepts. No effect follows the reservation.
+4. `CanaryReserved`: consume the sole use under the same mutex used by cancellation. Return a private, non-cloneable metadata token that no broker dispatcher accepts. No effect follows the reservation in the metadata drill. The separate [fixed-canary input/import drill](protected-entry.md) may consume this private token to write a new encrypted fixture; it does not activate a live vault or broker grant.
 
 `Canceled`, `Expired`, `Invalidated` and `ClockInvalid` are terminal before reservation. Cancellation is operator-role-bound. A change of any exact deployment binding invalidates the ceremony. The injected clock is checked inside the mutex; regression latches failure, arithmetic overflow prevents construction, and the deadline is exclusive. The fixed maximum lifetime is 60 seconds; an earlier receipt expiry wins. Neither denied calls nor review/approval extend it.
 

@@ -6,6 +6,7 @@ No package installation or network calls: Cargo metadata uses --offline --locked
 import json
 import argparse
 import pathlib
+import re
 import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -16,7 +17,7 @@ parser.add_argument("--output", default=str(ROOT / "docs" / "dependency-inventor
 parser.add_argument("--signing", action="store_true", help="Also record optional signing and combined feature graphs")
 args = parser.parse_args()
 TARGET = args.target
-output = {"target": TARGET, "configurations": {}}
+output = {"target": TARGET, "selection": "cargo tree normal/build/dev graph; not a compilation attestation", "configurations": {}}
 configurations = [("default", []), ("storage-spike", ["--features", "storage-spike"])]
 if args.signing:
     configurations += [("signing-spike", ["--features", "signing-spike"]), ("all-features", ["--all-features"])]
@@ -25,19 +26,29 @@ for name, extra in configurations:
         "cargo", "metadata", "--locked", "--offline", "--format-version", "1",
         "--filter-platform", TARGET, *extra,
     ], cwd=ROOT))
-    nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
     packages = {package["id"]: package for package in metadata["packages"]}
-    reached = set()
-    pending = [metadata["resolve"]["root"]]
-    while pending:
-        package_id = pending.pop()
-        if package_id in reached:
-            continue
-        reached.add(package_id)
-        pending.extend(nodes[package_id]["dependencies"])
+    # Metadata resolution can contain packages not selected for compilation.
+    # Use Cargo's target/feature tree for selection and feature evidence instead
+    # of recursively treating every resolved node as part of the active graph.
+    tree = subprocess.check_output([
+        "cargo", "tree", "--locked", "--offline", "--target", TARGET,
+        "--edges", "normal,build,dev", "--no-dedupe", "--prefix", "none",
+        "--format", "{p}|{f}", *extra,
+    ], cwd=ROOT, text=True)
+    reached = {}
+    for line in tree.splitlines():
+        display, features = line.split("|", 1)
+        match = re.match(r"^(\S+) v(\S+)(?: |$)", display)
+        if not match:
+            raise ValueError(f"Unsupported cargo tree package display: {display}")
+        matches = [key for key, package in packages.items()
+                   if (package["name"], package["version"]) == match.groups()]
+        if len(matches) != 1:
+            raise ValueError(f"Ambiguous cargo tree package identity: {display}")
+        reached.setdefault(matches[0], set()).update(filter(None, features.split(",")))
     output["configurations"][name] = sorted([
         {"name": packages[key]["name"], "version": packages[key]["version"],
-         "license": packages[key]["license"], "features": nodes[key]["features"],
+         "license": packages[key]["license"], "features": sorted(reached[key]),
          "rust_version": packages[key]["rust_version"],
          "source": packages[key]["source"]}
         for key in reached if packages[key]["source"] is not None
