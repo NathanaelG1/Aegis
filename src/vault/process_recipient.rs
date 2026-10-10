@@ -10,9 +10,12 @@
 use super::{
     crypto::{self, PrivateBytes, Signed},
     custody::{self, BrokerRole},
-    model::{DeliveryProfile, DeliveryProjection, RecipientBinding},
+    model::{DeliveryProjection, RecipientBinding},
     protocol::SyntheticProtocol,
-    store::{self, Ack, BrokerMaterial, Recipient, RecipientMaterial, RecipientOutcome, Store},
+    store::{
+        self, Ack, BrokerMaterial, ReceiptContract, Recipient, RecipientMaterial, RecipientOutcome,
+        Store,
+    },
 };
 use crate::{ErrorCode, Lifecycle, ManualClock, RequestId};
 use serde::{Deserialize, Serialize};
@@ -35,6 +38,8 @@ const BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(30);
 pub(super) enum RecipientEndpoint {
     Local(Arc<Recipient>),
     Process(Arc<ProcessRecipient>),
+    #[cfg(all(test, feature = "application-slot"))]
+    Slot(Arc<super::application_slot::SlotRecipient>),
 }
 impl From<Arc<Recipient>> for RecipientEndpoint {
     fn from(value: Arc<Recipient>) -> Self {
@@ -46,11 +51,27 @@ impl From<Arc<ProcessRecipient>> for RecipientEndpoint {
         Self::Process(value)
     }
 }
+#[cfg(all(test, feature = "application-slot"))]
+impl From<Arc<super::application_slot::SlotRecipient>> for RecipientEndpoint {
+    fn from(value: Arc<super::application_slot::SlotRecipient>) -> Self {
+        Self::Slot(value)
+    }
+}
 impl RecipientEndpoint {
     pub(super) fn check_store(&self, store: &Store) -> Result<(), ErrorCode> {
         match self {
-            Self::Local(recipient) => store.check_recipient(recipient),
+            Self::Local(recipient) => {
+                if store.receipt_contract() != ReceiptContract::Acceptance {
+                    return Err(ErrorCode::ReconciliationRequired);
+                }
+                store.check_recipient(recipient)
+            }
+            #[cfg(all(test, feature = "application-slot"))]
+            Self::Slot(recipient) => recipient.check_store(store),
             Self::Process(recipient) => {
+                if store.receipt_contract() != recipient.contract {
+                    return Err(ErrorCode::ReconciliationRequired);
+                }
                 store.check_process_receipts(&recipient.snapshot()?.received)
             }
         }
@@ -58,6 +79,8 @@ impl RecipientEndpoint {
     pub(super) fn generation(&self) -> Result<u64, ErrorCode> {
         match self {
             Self::Local(recipient) => recipient.generation(),
+            #[cfg(all(test, feature = "application-slot"))]
+            Self::Slot(recipient) => Ok(recipient.process_receipts()?.0),
             Self::Process(recipient) => Ok(recipient.snapshot()?.generation),
         }
     }
@@ -69,6 +92,8 @@ impl RecipientEndpoint {
     ) -> Result<DeliveryProjection, ErrorCode> {
         match self {
             Self::Local(recipient) => store.deliver(id, recipient, at),
+            #[cfg(all(test, feature = "application-slot"))]
+            Self::Slot(recipient) => store.deliver_via(id, at, |c| recipient.accept(c)),
             Self::Process(recipient) => store.deliver_via(id, at, |c| recipient.accept(c)),
         }
     }
@@ -111,6 +136,10 @@ struct Status {
     writer_key_digest: String,
     generation: u64,
     receipts: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    installed_version: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    incomplete_installations: Option<usize>,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -133,6 +162,8 @@ struct Reply {
 pub(super) struct Snapshot {
     pub(super) generation: u64,
     pub(super) received: BTreeMap<RequestId, String>,
+    pub(super) installed_version: Option<u64>,
+    pub(super) incomplete_installations: Option<usize>,
 }
 
 /// Owns the sole child and its inherited socket. No path listener, shell, executable
@@ -305,6 +336,7 @@ fn write_frame(writer: &mut impl Write, bytes: &[u8]) -> Result<(), ErrorCode> {
 }
 
 pub(super) struct ProcessRecipient {
+    contract: ReceiptContract,
     material: Arc<BrokerMaterial>,
     session: Mutex<Session>,
 }
@@ -312,12 +344,14 @@ impl ProcessRecipient {
     // The fixed service supervisor owns/reaps the recipient Child. The broker
     // receives only this inherited socket and its existing public verification
     // material; it never opens recipient-private role files.
-    pub(super) fn from_supervised_stream(
+    pub(super) fn from_supervised_stream_contract(
         material: Arc<BrokerMaterial>,
         stream: UnixStream,
+        contract: ReceiptContract,
     ) -> Result<Arc<Self>, ErrorCode> {
         let recipient = Arc::new(Self {
             material,
+            contract,
             session: Mutex::new(Session {
                 child: None,
                 stream,
@@ -337,6 +371,7 @@ impl ProcessRecipient {
     ) -> Result<Arc<Self>, ErrorCode> {
         let recipient = Arc::new(Self {
             material,
+            contract: ReceiptContract::Acceptance,
             session: Mutex::new(Session::spawn(
                 if create { "create" } else { "open" },
                 custody,
@@ -356,7 +391,9 @@ impl ProcessRecipient {
             .exchange(&Request::Status {
                 nonce: nonce.clone(),
             })
-            .and_then(|signed| verify_status(&self.material, &nonce, &signed));
+            .and_then(|signed| {
+                verify_status_contract(&self.material, &nonce, &signed, self.contract)
+            });
         if result.is_err() {
             session.stop();
         }
@@ -373,11 +410,12 @@ impl ProcessRecipient {
                 capsule: String::from_utf8(capsule.bytes().to_vec())
                     .map_err(|_| ErrorCode::InvalidRequest)?,
             })?;
-            verify_reply(
+            verify_reply_contract(
                 &self.material,
                 &nonce,
                 &crypto::hash(capsule.bytes()),
                 &signed,
+                self.contract,
             )
         })();
         match result {
@@ -389,14 +427,37 @@ impl ProcessRecipient {
         }
     }
 }
+#[cfg(test)]
 fn verify_status(
     material: &BrokerMaterial,
     nonce: &str,
     signed: &Signed,
 ) -> Result<Snapshot, ErrorCode> {
+    verify_status_contract(material, nonce, signed, ReceiptContract::Acceptance)
+}
+fn status_kind(contract: ReceiptContract) -> &'static str {
+    match contract {
+        ReceiptContract::Acceptance => "aegis.synthetic.recipient.status.v1",
+        #[cfg(feature = "application-slot")]
+        ReceiptContract::Installation => "aegis.synthetic.application-slot.status.v1",
+    }
+}
+fn reply_kind(contract: ReceiptContract) -> &'static str {
+    match contract {
+        ReceiptContract::Acceptance => "aegis.synthetic.recipient.reply.v1",
+        #[cfg(feature = "application-slot")]
+        ReceiptContract::Installation => "aegis.synthetic.application-slot.reply.v1",
+    }
+}
+fn verify_status_contract(
+    material: &BrokerMaterial,
+    nonce: &str,
+    signed: &Signed,
+    contract: ReceiptContract,
+) -> Result<Snapshot, ErrorCode> {
     let status: Status = material.receipt.verify(signed)?;
     if status.schema != 1
-        || status.kind != "aegis.synthetic.recipient.status.v1"
+        || status.kind != status_kind(contract)
         || status.nonce != nonce
         || status.vault_id != material.vault_id
         || status.recipient != RecipientBinding::fixture()
@@ -410,9 +471,14 @@ fn verify_status(
     let mut received = BTreeMap::new();
     let mut generations = BTreeSet::new();
     for receipt in status.receipts {
-        let ack: Ack = material
-            .receipt
-            .verify(&Signed::parse(receipt.as_bytes())?)?;
+        let signed = Signed::parse(receipt.as_bytes())?;
+        let ack: Ack = match contract {
+            ReceiptContract::Acceptance => material.receipt.verify(&signed)?,
+            #[cfg(feature = "application-slot")]
+            ReceiptContract::Installation => {
+                super::application_slot::receipt_ack(&signed, &material.receipt)?
+            }
+        };
         if !matches!(ack.version, 1 | 2)
             || ack.generation > status.generation
             || crypto::decode(&ack.capsule_digest, 32)?.0.len() != 32
@@ -420,11 +486,12 @@ fn verify_status(
         {
             return Err(ErrorCode::ReconciliationRequired);
         }
-        store::validate_ack(
-            &ack,
+        contract.verify_ack(
+            &signed,
+            &material.receipt,
             &material.vault_id,
             &ack.delivery_id,
-            &DeliveryProfile::fixture(ack.version),
+            &contract.profile(ack.version),
             &ack.capsule_digest,
         )?;
         if received
@@ -434,20 +501,48 @@ fn verify_status(
             return Err(ErrorCode::ReconciliationRequired);
         }
     }
+    match contract {
+        ReceiptContract::Acceptance => {
+            if status.installed_version.is_some() || status.incomplete_installations.is_some() {
+                return Err(ErrorCode::ReconciliationRequired);
+            }
+        }
+        #[cfg(feature = "application-slot")]
+        ReceiptContract::Installation => {
+            let version = status
+                .installed_version
+                .ok_or(ErrorCode::ReconciliationRequired)?;
+            let incomplete = status
+                .incomplete_installations
+                .ok_or(ErrorCode::ReconciliationRequired)?;
+            if incomplete > 1
+                || version > 2
+                || (incomplete == 0 && version != status.generation)
+                || (incomplete == 1
+                    && version != status.generation
+                    && version != status.generation + 1)
+            {
+                return Err(ErrorCode::ReconciliationRequired);
+            }
+        }
+    }
     Ok(Snapshot {
         generation: status.generation,
         received,
+        installed_version: status.installed_version,
+        incomplete_installations: status.incomplete_installations,
     })
 }
-fn verify_reply(
+fn verify_reply_contract(
     material: &BrokerMaterial,
     nonce: &str,
     digest: &str,
     signed: &Signed,
+    contract: ReceiptContract,
 ) -> Result<RecipientOutcome, ErrorCode> {
     let reply: Reply = material.receipt.verify(signed)?;
     if reply.schema != 1
-        || reply.kind != "aegis.synthetic.recipient.reply.v1"
+        || reply.kind != reply_kind(contract)
         || reply.nonce != nonce
         || reply.vault_id != material.vault_id
         || reply.capsule_digest != digest
@@ -464,14 +559,48 @@ fn verify_reply(
     }
 }
 
-fn serve(material: Arc<RecipientMaterial>, recipient: Arc<Recipient>) -> Result<(), ErrorCode> {
+pub(super) trait RecipientTarget {
+    fn contract(&self) -> ReceiptContract;
+    fn process_receipts(&self) -> Result<(u64, Vec<String>), ErrorCode>;
+    fn installation_state(&self) -> Result<(Option<u64>, Option<usize>), ErrorCode> {
+        Ok((None, None))
+    }
+    fn accept(&self, capsule: Signed) -> RecipientOutcome;
+}
+impl RecipientTarget for Recipient {
+    fn contract(&self) -> ReceiptContract {
+        ReceiptContract::Acceptance
+    }
+    fn process_receipts(&self) -> Result<(u64, Vec<String>), ErrorCode> {
+        self.process_receipts()
+    }
+    fn accept(&self, capsule: Signed) -> RecipientOutcome {
+        self.accept(capsule)
+    }
+}
+#[cfg(feature = "application-slot")]
+pub(super) fn supervised_application_child(
+    custody: &Path,
+    root: &Path,
+    create: bool,
+    inspect: bool,
+) -> Result<(), ErrorCode> {
+    let material = custody::open_recipient_role(custody)?;
+    let recipient =
+        super::application_slot::SlotRecipient::acquire(root, material.clone(), create, inspect)?;
+    serve(material, recipient)
+}
+fn serve(
+    material: Arc<RecipientMaterial>,
+    recipient: Arc<impl RecipientTarget>,
+) -> Result<(), ErrorCode> {
     let mut input = std::io::stdin().lock();
     let mut output = std::io::stdout().lock();
     for _ in 0..MAX_EXCHANGES {
         let bytes = read_frame(&mut input)?;
         let request: Request =
             serde_json::from_slice(&bytes.0).map_err(|_| ErrorCode::InvalidRequest)?;
-        let response = respond(&material, &recipient, request)?;
+        let response = respond(&material, recipient.as_ref(), request)?;
         write_frame(&mut output, response.bytes())?;
     }
     Ok(())
@@ -507,7 +636,7 @@ pub(super) fn supervised_child_discard_delivery_reply(
         let request: Request =
             serde_json::from_slice(&bytes.0).map_err(|_| ErrorCode::InvalidRequest)?;
         let delivery = matches!(request, Request::Deliver { .. });
-        let response = respond(&material, &recipient, request)?;
+        let response = respond(&material, recipient.as_ref(), request)?;
         if delivery {
             return Err(ErrorCode::BrokerUnavailable);
         }
@@ -518,7 +647,7 @@ pub(super) fn supervised_child_discard_delivery_reply(
 
 fn respond(
     material: &RecipientMaterial,
-    recipient: &Recipient,
+    recipient: &impl RecipientTarget,
     request: Request,
 ) -> Result<Signed, ErrorCode> {
     let nonce = match &request {
@@ -530,9 +659,10 @@ fn respond(
     match request {
         Request::Status { nonce } => {
             let (generation, receipts) = recipient.process_receipts()?;
+            let (installed_version, incomplete_installations) = recipient.installation_state()?;
             material.receipt.sign(&Status {
                 schema: 1,
-                kind: "aegis.synthetic.recipient.status.v1".into(),
+                kind: status_kind(recipient.contract()).into(),
                 nonce,
                 vault_id: material.vault_id.clone(),
                 recipient: RecipientBinding::fixture(),
@@ -540,6 +670,8 @@ fn respond(
                 writer_key_digest: crypto::hash(material.writer.fixture_der()),
                 generation,
                 receipts,
+                installed_version,
+                incomplete_installations,
             })
         }
         Request::Deliver { nonce, capsule } => {
@@ -558,7 +690,7 @@ fn respond(
             };
             material.receipt.sign(&Reply {
                 schema: 1,
-                kind: "aegis.synthetic.recipient.reply.v1".into(),
+                kind: reply_kind(recipient.contract()).into(),
                 nonce,
                 vault_id: material.vault_id.clone(),
                 capsule_digest,
@@ -988,7 +1120,7 @@ mod tests {
                 while let Ok(bytes) = read_frame(&mut peer) {
                     let request: Request = serde_json::from_slice(&bytes.0).unwrap();
                     let delivery = matches!(request, Request::Deliver { .. });
-                    let response = respond(&material, &server_recipient, request).unwrap();
+                    let response = respond(&material, server_recipient.as_ref(), request).unwrap();
                     if !delivery {
                         write_frame(&mut peer, response.bytes()).unwrap();
                         continue;
@@ -1047,6 +1179,7 @@ mod tests {
                 }
             });
             let remote = Arc::new(ProcessRecipient {
+                contract: ReceiptContract::Acceptance,
                 material: broker.material.clone(),
                 session: Mutex::new(session(parent)),
             });

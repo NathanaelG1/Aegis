@@ -15,7 +15,7 @@ use super::{
     entry::protected_entry,
     process_recipient::{self, ProcessRecipient},
     protocol::{self, SyntheticProtocol},
-    store::{self, Store},
+    store::{self, ReceiptContract, Store},
     tls::socket::{self, ClientFactory, ServerMaterial, SocketClient},
 };
 use crate::{
@@ -105,14 +105,16 @@ struct Bootstrap {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Observation {
-    consumed: usize,
-    incomplete: usize,
-    unknown: usize,
-    remaining: u32,
-    generation: u64,
-    revoked: bool,
-    revoked_admission_denied: bool,
+pub(super) struct Observation {
+    pub(super) consumed: usize,
+    pub(super) incomplete: usize,
+    pub(super) unknown: usize,
+    pub(super) remaining: u32,
+    pub(super) generation: u64,
+    pub(super) revoked: bool,
+    pub(super) revoked_admission_denied: bool,
+    pub(super) installed_version: Option<u64>,
+    pub(super) incomplete_installations: Option<usize>,
 }
 
 // Every spawned process immediately enters a guard. No fallible setup can lose
@@ -289,21 +291,6 @@ fn bootstrap(root: &Path) -> Result<Bootstrap, ErrorCode> {
     supervisor.finish(deadline)?;
     Ok(report)
 }
-fn spawn_recipient(
-    root: &Path,
-    create: bool,
-    supervisor: &mut Supervisor,
-) -> Result<UnixStream, ErrorCode> {
-    spawn_recipient_mode(
-        root,
-        if create {
-            "recipient-create"
-        } else {
-            "recipient-open"
-        },
-        supervisor,
-    )
-}
 fn spawn_recipient_mode(
     root: &Path,
     mode: &str,
@@ -332,6 +319,7 @@ fn spawn_recipient_mode(
 }
 
 struct ClientChannels {
+    contract: ReceiptContract,
     agent: SocketClient,
     admin: SocketClient,
     agent_actor: ActorRole,
@@ -405,7 +393,7 @@ impl ClientChannels {
             exchange(&mut self.admin, "inspect_review", &handle)?,
             "review",
         )?;
-        if expected.profile != super::DeliveryProfile::fixture(1)
+        if expected.profile != self.contract.profile(1)
             || expected.operation != super::DeliveryParameters::fixture(1)
         {
             return Err(ErrorCode::PolicyChanged);
@@ -479,6 +467,55 @@ fn is_error(response: &Value, error: ErrorCode) -> bool {
         && matches!(serde_json::from_value::<ErrorCode>(response["error"].clone()), Ok(found) if found == error)
 }
 
+fn recipient_mode(mode: &str, create: bool) -> &'static str {
+    #[cfg(feature = "application-slot")]
+    if mode.starts_with("slot-") {
+        #[cfg(test)]
+        match mode {
+            "slot-create-exit-intent" => return "slot-recipient-exit-intent",
+            "slot-create-exit-stage" => return "slot-recipient-exit-stage",
+            "slot-create-exit-rename" => return "slot-recipient-exit-rename",
+            "slot-create-exit-directory" => return "slot-recipient-exit-directory",
+            "slot-create-exit-receipt" => return "slot-recipient-exit-receipt",
+            _ => {}
+        }
+        return if create {
+            "slot-recipient-create"
+        } else {
+            "slot-recipient-open"
+        };
+    }
+    #[cfg(test)]
+    if mode == "create-lost-recipient-reply" {
+        return "recipient-create-drop-reply";
+    }
+    let _ = mode;
+    if create {
+        "recipient-create"
+    } else {
+        "recipient-open"
+    }
+}
+fn service_mode(contract: ReceiptContract, create: bool) -> &'static str {
+    match contract {
+        ReceiptContract::Acceptance => {
+            if create {
+                "create"
+            } else {
+                "open"
+            }
+        }
+        #[cfg(feature = "application-slot")]
+        ReceiptContract::Installation => {
+            if create {
+                "slot-create"
+            } else {
+                "slot-open"
+            }
+        }
+    }
+}
+#[cfg(test)]
 fn start_phase(
     root: &Path,
     vault_id: &str,
@@ -505,14 +542,8 @@ fn start_phase_mode(
     let agent_actor = ActorRole::agent(&root.join("custody"), vault_id)?;
     let admin_actor = ActorRole::admin(&root.join("custody"), vault_id)?;
     let mut supervisor = Supervisor::default();
-    #[cfg(not(test))]
-    let recipient = spawn_recipient(root, create, &mut supervisor)?;
-    #[cfg(test)]
-    let recipient = if mode == "create-lost-recipient-reply" {
-        spawn_recipient_mode(root, "recipient-create-drop-reply", &mut supervisor)?
-    } else {
-        spawn_recipient(root, create, &mut supervisor)?
-    };
+    let recipient_mode = recipient_mode(mode, create);
+    let recipient = spawn_recipient_mode(root, recipient_mode, &mut supervisor)?;
     let (agent, broker_agent) = pair()?;
     let (admin, broker_admin) = pair()?;
     supervisor.broker = Some(
@@ -530,6 +561,20 @@ fn start_phase_mode(
         stream
     };
     let channels = ClientChannels {
+        contract: {
+            #[cfg(feature = "application-slot")]
+            {
+                if mode.starts_with("slot-") {
+                    ReceiptContract::Installation
+                } else {
+                    ReceiptContract::Acceptance
+                }
+            }
+            #[cfg(not(feature = "application-slot"))]
+            {
+                ReceiptContract::Acceptance
+            }
+        },
         agent: agent_factory.connect(agent)?,
         admin: admin_factory.connect(admin)?,
         agent_actor,
@@ -540,14 +585,25 @@ fn start_phase_mode(
     Ok((supervisor, channels, deadline))
 }
 fn inspect(root: &Path) -> Result<Observation, ErrorCode> {
+    inspect_contract(root, ReceiptContract::Acceptance)
+}
+pub(super) fn inspect_contract(
+    root: &Path,
+    contract: ReceiptContract,
+) -> Result<Observation, ErrorCode> {
     protected_entry::validate_destination(root)?;
     store::safe_directory(root)?;
     let deadline = Instant::now() + PROCESS_TIME;
     let mut supervisor = Supervisor::default();
-    let recipient = spawn_recipient(root, false, &mut supervisor)?;
+    let (recipient_mode, mode) = match contract {
+        ReceiptContract::Acceptance => ("recipient-open", "inspect"),
+        #[cfg(feature = "application-slot")]
+        ReceiptContract::Installation => ("slot-recipient-inspect", "slot-inspect"),
+    };
+    let recipient = spawn_recipient_mode(root, recipient_mode, &mut supervisor)?;
     let (mut stream, output) = pair()?;
     supervisor.broker = Some(
-        child_command("inspect", root)?
+        child_command(mode, root)?
             .stdin(stdio(recipient))
             .stdout(stdio(output))
             .stderr(Stdio::null())
@@ -566,10 +622,17 @@ fn inspect(root: &Path) -> Result<Observation, ErrorCode> {
 /// current executable can be launched; this accepts no credential, command,
 /// address, caller policy, fault control or claimed deployment readiness.
 pub fn run_synthetic_process_service_drill(root: &Path) -> Result<ProcessServiceReport, ErrorCode> {
+    run_contract(root, ReceiptContract::Acceptance)
+}
+pub(super) fn run_contract(
+    root: &Path,
+    contract: ReceiptContract,
+) -> Result<ProcessServiceReport, ErrorCode> {
     protected_entry::validate_destination(root)?;
     store::new_directory(root)?;
     let fixture = bootstrap(root)?;
-    let (mut supervisor, mut channels, deadline) = start_phase(root, &fixture.vault_id, true)?;
+    let (mut supervisor, mut channels, deadline) =
+        start_phase_mode(root, &fixture.vault_id, service_mode(contract, true), true)?;
     let (agent_denied, admin_denied) = channels.connect()?;
     let invocation = channels.approve()?;
     let run: OperationRunView = value(channels.agent("invoke_approved", &invocation)?, "run")?;
@@ -581,14 +644,19 @@ pub fn run_synthetic_process_service_drill(root: &Path) -> Result<ProcessService
     drop(channels);
     supervisor.finish(deadline)?;
 
-    let (mut supervisor, mut channels, deadline) = start_phase(root, &fixture.vault_id, false)?;
+    let (mut supervisor, mut channels, deadline) = start_phase_mode(
+        root,
+        &fixture.vault_id,
+        service_mode(contract, false),
+        false,
+    )?;
     let (cold_agent, cold_admin) = channels.connect()?;
     channels.revoke()?;
     let transcript = transcript || channels.transcript_contains_canary;
     channels.close()?;
     drop(channels);
     supervisor.finish(deadline)?;
-    let observation = inspect(root)?;
+    let observation = inspect_contract(root, contract)?;
     if !(run.state == Lifecycle::Succeeded
         && duplicate_reused
         && agent_denied
@@ -668,18 +736,32 @@ pub fn inspect_synthetic_process_service(
     })
 }
 
-fn broker_service(root: &Path, create: bool) -> Result<(), ErrorCode> {
+fn broker_service(root: &Path, create: bool, contract: ReceiptContract) -> Result<(), ErrorCode> {
     let broker = BrokerRole::open(&root.join("custody/broker"))?;
     let store = if create {
-        let imported =
-            protected_entry::import_delivery_canary(&root.join("input"), &broker.material)?;
-        Store::create_imported(&root.join("vault"), broker.material.clone(), imported)?
+        let imported = protected_entry::import_delivery_canary_contract(
+            &root.join("input"),
+            &broker.material,
+            contract,
+        )?;
+        Store::create_imported_contract(
+            &root.join("vault"),
+            broker.material.clone(),
+            imported,
+            contract,
+        )?
     } else {
         Store::open(&root.join("vault"), broker.material.clone())?
     };
     store.check_imported_record(&root.join("input"))?;
-    let recipient =
-        ProcessRecipient::from_supervised_stream(broker.material, inherited(std::io::stderr())?)?;
+    if store.receipt_contract() != contract {
+        return Err(ErrorCode::ReconciliationRequired);
+    }
+    let recipient = ProcessRecipient::from_supervised_stream_contract(
+        broker.material,
+        inherited(std::io::stderr())?,
+        contract,
+    )?;
     // Preserve the existing fixed-fixture journal clock across cold starts.
     // TLS I/O and the owning supervisor enforce real absolute wall-time bounds.
     let protocol = SyntheticProtocol::assemble(
@@ -735,12 +817,18 @@ fn broker_service(root: &Path, create: bool) -> Result<(), ErrorCode> {
         result.and(agent_result)
     })
 }
-fn broker_inspect(root: &Path) -> Result<(), ErrorCode> {
+fn broker_inspect(root: &Path, contract: ReceiptContract) -> Result<(), ErrorCode> {
     let broker = BrokerRole::open(&root.join("custody/broker"))?;
     let store = Store::open(&root.join("vault"), broker.material.clone())?;
     store.check_imported_record(&root.join("input"))?;
-    let recipient =
-        ProcessRecipient::from_supervised_stream(broker.material, inherited(std::io::stdin())?)?;
+    if store.receipt_contract() != contract {
+        return Err(ErrorCode::ReconciliationRequired);
+    }
+    let recipient = ProcessRecipient::from_supervised_stream_contract(
+        broker.material,
+        inherited(std::io::stdin())?,
+        contract,
+    )?;
     let snapshot = recipient.snapshot()?;
     store.check_process_receipts(&snapshot.received)?;
     let (consumed, incomplete, unknown, remaining, revoked) = store.history_counts()?;
@@ -752,6 +840,8 @@ fn broker_inspect(root: &Path) -> Result<(), ErrorCode> {
         generation: snapshot.generation,
         revoked,
         revoked_admission_denied: store.ready() == Err(ErrorCode::GrantRevoked),
+        installed_version: snapshot.installed_version,
+        incomplete_installations: snapshot.incomplete_installations,
     })
 }
 fn child(mode: &str, root: &Path) -> Result<(), ErrorCode> {
@@ -765,11 +855,13 @@ fn child(mode: &str, root: &Path) -> Result<(), ErrorCode> {
                 vault_id: fixture.vault_id,
             })
         }
-        "create" => broker_service(root, true),
-        "open" => broker_service(root, false),
-        "inspect" => broker_inspect(root),
+        "create" => broker_service(root, true, ReceiptContract::Acceptance),
+        "open" => broker_service(root, false, ReceiptContract::Acceptance),
+        "inspect" => broker_inspect(root, ReceiptContract::Acceptance),
         #[cfg(test)]
-        "create-drop-response" | "create-lost-recipient-reply" => broker_service(root, true),
+        "create-drop-response" | "create-lost-recipient-reply" => {
+            broker_service(root, true, ReceiptContract::Acceptance)
+        }
         #[cfg(test)]
         "recipient-create-drop-reply" => {
             process_recipient::supervised_child_discard_delivery_reply(
@@ -782,6 +874,41 @@ fn child(mode: &str, root: &Path) -> Result<(), ErrorCode> {
             &root.join("recipient"),
             mode == "recipient-create",
         ),
+        #[cfg(feature = "application-slot")]
+        "slot-create" => broker_service(root, true, ReceiptContract::Installation),
+        #[cfg(feature = "application-slot")]
+        "slot-open" => broker_service(root, false, ReceiptContract::Installation),
+        #[cfg(feature = "application-slot")]
+        "slot-inspect" => broker_inspect(root, ReceiptContract::Installation),
+        #[cfg(feature = "application-slot")]
+        "slot-recipient-create" | "slot-recipient-open" | "slot-recipient-inspect" => {
+            process_recipient::supervised_application_child(
+                &root.join("custody/recipient"),
+                root,
+                mode == "slot-recipient-create",
+                mode == "slot-recipient-inspect",
+            )
+        }
+        #[cfg(all(test, feature = "application-slot"))]
+        "slot-create-exit-intent"
+        | "slot-create-exit-stage"
+        | "slot-create-exit-rename"
+        | "slot-create-exit-directory"
+        | "slot-create-exit-receipt" => broker_service(root, true, ReceiptContract::Installation),
+        #[cfg(all(test, feature = "application-slot"))]
+        "slot-recipient-exit-intent"
+        | "slot-recipient-exit-stage"
+        | "slot-recipient-exit-rename"
+        | "slot-recipient-exit-directory"
+        | "slot-recipient-exit-receipt" => {
+            super::application_slot::set_child_fault(mode)?;
+            process_recipient::supervised_application_child(
+                &root.join("custody/recipient"),
+                root,
+                true,
+                false,
+            )
+        }
         _ => Err(ErrorCode::InvalidRequest),
     }
 }
@@ -1065,6 +1192,83 @@ mod tests {
         assert_eq!(recovered.consumed_uses, 1);
         assert_eq!(recovered.recipient_generation, 1);
         assert!(!recovered.automatic_retry_allowed);
+    }
+
+    #[cfg(feature = "application-slot")]
+    #[test]
+    fn application_slot_actual_child_exits_retain_consumed_uncertainty_at_five_boundaries() {
+        let scenarios = [
+            ("slot-create-exit-intent", 0, 0, 1, false),
+            ("slot-create-exit-stage", 0, 0, 1, true),
+            ("slot-create-exit-rename", 0, 1, 1, false),
+            ("slot-create-exit-directory", 0, 1, 1, false),
+            ("slot-create-exit-receipt", 1, 1, 0, false),
+        ];
+        for (mode, generation, installed, pending, staged) in scenarios {
+            let paths = Paths::new();
+            let fixture = paths.bootstrap();
+            let (mut supervisor, mut channels, deadline) =
+                start_phase_mode(&paths.0, &fixture.vault_id, mode, true).unwrap();
+            let ids = pids(&mut supervisor);
+            channels.connect().unwrap();
+            let invocation = channels.approve().unwrap();
+            let run: OperationRunView = value(
+                channels.agent("invoke_approved", &invocation).unwrap(),
+                "run",
+            )
+            .unwrap();
+            assert_eq!(run.state, Lifecycle::OutcomeUnknown, "{mode}");
+            let duplicate: OperationRunView = value(
+                channels.agent("invoke_approved", &invocation).unwrap(),
+                "run",
+            )
+            .unwrap();
+            assert_eq!(run, duplicate, "{mode}");
+            channels.close().unwrap();
+            drop(channels);
+            supervisor.finish(deadline).unwrap();
+            reaped(ids);
+            let before = fs::read(paths.0.join("application/installation.jws")).unwrap();
+            let report =
+                super::super::application_slot::inspect_synthetic_application_slot(&paths.0)
+                    .unwrap();
+            assert_eq!(
+                (
+                    report.consumed_uses,
+                    report.remaining_uses,
+                    report.unknown_deliveries
+                ),
+                (1, 3, 1),
+                "{mode}"
+            );
+            assert_eq!(
+                (
+                    report.recipient_generation,
+                    report.installed_version,
+                    report.incomplete_installations
+                ),
+                (generation, installed, pending),
+                "{mode}"
+            );
+            assert!(!report.automatic_retry_allowed);
+            assert_eq!(
+                paths.0.join("application/.provider-auth.stage").exists(),
+                staged,
+                "{mode}"
+            );
+            assert_eq!(
+                fs::read(paths.0.join("application/installation.jws")).unwrap(),
+                before
+            );
+            assert!(
+                start_phase_mode(&paths.0, &fixture.vault_id, "slot-open", false).is_err(),
+                "{mode}"
+            );
+            let again =
+                super::super::application_slot::inspect_synthetic_application_slot(&paths.0)
+                    .unwrap();
+            assert_eq!(again, report, "{mode}");
+        }
     }
 
     #[test]

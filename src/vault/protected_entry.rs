@@ -16,7 +16,7 @@ use crate::{
     vault::{
         crypto::{self, Identity, PrivateBytes},
         model::{DeliveryParameters, DeliveryProfile, SecretReference},
-        store::{self, BrokerMaterial},
+        store::{self, BrokerMaterial, ReceiptContract},
     },
     ErrorCode, ManualClock,
 };
@@ -79,14 +79,18 @@ struct BrokerImportBinding {
     profile: DeliveryProfile,
 }
 impl BrokerImportBinding {
+    #[cfg(test)]
     fn fixture(kit: &BrokerMaterial) -> Self {
+        Self::for_contract(kit, ReceiptContract::Acceptance)
+    }
+    fn for_contract(kit: &BrokerMaterial, contract: ReceiptContract) -> Self {
         Self {
             vault_id: kit.vault_id.clone(),
             writer_key_digest: crypto::hash(kit.writer.verifier().fixture_der()),
             recipient_key_digest: crypto::hash(kit.recipient.to_string().as_bytes()),
             receipt_key_digest: crypto::hash(kit.receipt.fixture_der()),
             secret: DeliveryParameters::fixture(1).secret,
-            profile: DeliveryProfile::fixture(1),
+            profile: contract.profile(1),
         }
     }
 }
@@ -579,11 +583,19 @@ pub(in crate::vault) struct ImportedCanary {
     ciphertext_digest: String,
 }
 impl ImportedCanary {
+    #[cfg(test)]
     pub(in crate::vault) fn consume(
         self,
         kit: &BrokerMaterial,
     ) -> Result<(Vec<u8>, String), ErrorCode> {
-        if self.review.broker != Some(BrokerImportBinding::fixture(kit))
+        self.consume_contract(kit, ReceiptContract::Acceptance)
+    }
+    pub(in crate::vault) fn consume_contract(
+        self,
+        kit: &BrokerMaterial,
+        contract: ReceiptContract,
+    ) -> Result<(Vec<u8>, String), ErrorCode> {
+        if self.review.broker != Some(BrokerImportBinding::for_contract(kit, contract))
             || self.review.storage_recipient != kit.storage.recipient().to_string()
             || self.review.entry.bindings.secret_reference != "synthetic-provider-key"
             || self.review.entry.bindings.secret_version != 1
@@ -598,10 +610,12 @@ impl ImportedCanary {
         let metadata = serde_json::to_vec(&self.review).map_err(|_| ErrorCode::InvalidRequest)?;
         let metadata_digest = crypto::hash(&metadata);
         let clear = kit.storage.decrypt(&ciphertext)?;
-        decode_imported_value(
+        decode_imported_for(
             &clear.0,
             &metadata_digest,
             &DeliveryParameters::fixture(1).secret,
+            kit,
+            contract,
         )?;
         Ok((ciphertext, metadata_digest))
     }
@@ -660,13 +674,46 @@ pub(in crate::vault) fn decode_imported_value(
     Ok(PrivateBytes(input.to_vec()))
 }
 
+/// The frozen import metadata must name the exact current installation or acceptance profile.
+pub(in crate::vault) fn decode_imported_for(
+    clear: &[u8],
+    metadata_digest: &str,
+    reference: &SecretReference,
+    kit: &BrokerMaterial,
+    contract: ReceiptContract,
+) -> Result<PrivateBytes, ErrorCode> {
+    let input = decode_imported_value(clear, metadata_digest, reference)?;
+    let length = u32::from_be_bytes(
+        clear[8..12]
+            .try_into()
+            .map_err(|_| ErrorCode::InvalidProviderResult)?,
+    ) as usize;
+    let metadata: serde_json::Value = serde_json::from_slice(&clear[12..12 + length])
+        .map_err(|_| ErrorCode::InvalidProviderResult)?;
+    let expected = serde_json::to_value(BrokerImportBinding::for_contract(kit, contract))
+        .map_err(|_| ErrorCode::InvalidProviderResult)?;
+    if metadata["broker"] != expected
+        || metadata["storage_recipient"] != kit.storage.recipient().to_string()
+    {
+        return Err(ErrorCode::PolicyChanged);
+    }
+    Ok(input)
+}
+
 pub(in crate::vault) fn import_delivery_canary(
     destination: &Path,
     kit: &BrokerMaterial,
 ) -> Result<ImportedCanary, ErrorCode> {
+    import_delivery_canary_contract(destination, kit, ReceiptContract::Acceptance)
+}
+pub(in crate::vault) fn import_delivery_canary_contract(
+    destination: &Path,
+    kit: &BrokerMaterial,
+    contract: ReceiptContract,
+) -> Result<ImportedCanary, ErrorCode> {
     let ceremony = Ceremony::fixture(Arc::new(ManualClock::default()))?;
     let mut session = ImportSession::fixture(&ceremony, destination, &kit.storage)?;
-    session.review.broker = Some(BrokerImportBinding::fixture(kit));
+    session.review.broker = Some(BrokerImportBinding::for_contract(kit, contract));
     session.approve(&ceremony.bindings.operator, &session.review)?;
     session.import(
         &mut Cursor::new(&canary_frame(store::CANARY_ONE.as_bytes()).0),

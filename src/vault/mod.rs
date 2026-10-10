@@ -12,6 +12,8 @@
 //! ```compile_fail
 //! use aegis::vault::crypto::PrivateBytes;
 //! ```
+#[cfg(feature = "application-slot")]
+pub mod application_slot;
 mod auth;
 pub mod composed;
 mod crypto;

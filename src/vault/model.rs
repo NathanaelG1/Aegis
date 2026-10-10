@@ -82,8 +82,19 @@ impl DeliveryProfile {
             output_contract: 1,
         }
     }
+    #[cfg(feature = "application-slot")]
+    pub(crate) fn installation(version: u64) -> Self {
+        Self {
+            adapter_contract: 2,
+            output_contract: 2,
+            ..Self::fixture(version)
+        }
+    }
     pub(crate) fn validate(&self) -> Result<(), ErrorCode> {
-        if !matches!(self.secret.version, 1 | 2) || *self != Self::fixture(self.secret.version) {
+        let valid = *self == Self::fixture(self.secret.version);
+        #[cfg(feature = "application-slot")]
+        let valid = valid || *self == Self::installation(self.secret.version);
+        if !matches!(self.secret.version, 1 | 2) || !valid {
             return Err(ErrorCode::InvalidRequest);
         }
         Ok(())
