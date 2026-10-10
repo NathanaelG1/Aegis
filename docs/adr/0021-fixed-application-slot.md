@@ -1,7 +1,8 @@
 # ADR 0021: Fixed application-file installation
 
-Status: accepted for canary-only implementation, 10 October 2026; implementation
-and acceptance evidence pending. Operational deployment remains unavailable.
+Status: implemented for canary-only use, 10 October 2026; focused functional
+checks passed. Final integrated aggregate and hosted evidence are recorded
+separately. Operational deployment remains unavailable.
 
 ## Context
 
@@ -23,8 +24,8 @@ The public drill accepts a new absolute disposable root; read-only inspection
 accepts an existing root. It cannot accept arbitrary input, slot, filename,
 executable, configuration, provider, readiness assertion or fault control.
 Internal child dispatch and test-only faults remain implementation plumbing.
-The normal composition may use the one imported version; focused two-version
-replacement tests must be identified separately from that composed path.
+The normal composition uses the one imported version; focused two-version
+replacement tests are separate from that composed path.
 
 Gate the increment behind the optional `application-slot` feature, which
 includes `vault-spike` and pinned `rustix` 1.1.5 filesystem support. The fixed
@@ -35,6 +36,15 @@ is stored in `application/installation.jws` beneath the disposable root.
 The new recipient must validate the writer-signed capsule, its exact recipient,
 configuration, slot, version and expected generation. Installation evidence must
 bind the delivery/request and capsule to the installed version and generation.
+Installation mode must be part of the immutable reviewed profile as well as the
+persisted broker and recipient contract; a constructor or report flag cannot
+change the effect of an acceptance-only approval.
+Use adapter/output revisions `adapter_contract = 2` and `output_contract = 2`, frozen
+before input approval/encryption and revalidated at import, reopen, delivery
+approval and decryption. The separate profile `revision` remains `1`; legacy
+acceptance retains adapter/output contract revisions `1/1`. Distinct
+installation capsule/status/response/acknowledgement domains and the full
+signed profile prevent treating a legacy acceptance receipt as installation.
 The existing broker receipt correlation remains mandatory. An encrypted
 acceptance acknowledgement alone cannot claim the file installation succeeded.
 
@@ -56,6 +66,8 @@ acceptance acknowledgement alone cannot claim the file installation succeeded.
    evidence requires reconciliation. Never manufacture a successful receipt,
    replay an installation, refund a consumed use or restore session/approval
    authority to resolve ambiguity.
+   An intact pending intent may be observed with the old or new canary file;
+   inspection reports it as incomplete without promoting it to a completion.
 5. An exact completed duplicate returns existing evidence without another file
    effect. Changed bindings or stale generations fail closed. Inspection reads
    and validates existing evidence; it performs no repair, cleanup or replay.
@@ -66,9 +78,9 @@ installation but before durable acknowledgement may leave the canary present
 with an unknown broker outcome. Retaining uncertainty is the required result.
 Fail-closed handling does not promise that an installed value was removed.
 
-Directory-relative safe APIs may be supplied by an optional filesystem
-dependency. Its selection must preserve the repository's forbidden-unsafe-code
-policy and default dependency boundary. Maintainer documentation for
+Use the optional filesystem dependency for directory-relative safe APIs while
+preserving the repository's forbidden-unsafe-code policy and default dependency
+boundary. Maintainer documentation for
 [`rustix::fs::openat`](https://docs.rs/rustix/1.1.5/rustix/fs/fn.openat.html)
 specifies a safe directory-relative API returning an owned file descriptor;
 [`renameat`](https://docs.rs/rustix/1.1.5/rustix/fs/fn.renameat.html) accepts the
@@ -79,20 +91,24 @@ The [crate documentation](https://docs.rs/rustix/1.1.5/rustix/) explicitly leave
 ambient authority, sandboxing and significant platform differences to callers.
 Using these wrappers does not establish confinement.
 
-## Required functional evidence
+## Functional evidence and its limits
 
-The [application-slot contract](../application-slot.md) records the acceptance
-matrix and, when completed, exact-source results. Cover positive installation
-of the actual imported canary, independent file-content observation, unchanged
-duplicate installation, signed receipt/generation validation and read-only
-reopen. Exercise focused replacement and failures at intent, staging, file-sync,
-replacement, directory-sync, receipt and acknowledgement boundaries. Missing or
-substituted files, links and stale/invalid receipts must not silently continue.
-Identify component simulations separately from real child termination and
-composed execution. Preserve default-feature refusal and existing drills.
+The [application-slot contract](../application-slot.md) records focused results
+and identifies their exact source. Public executable checks observe the actual
+imported canary file, receipt metadata and read-only reopen; runtime inspection
+performs signature and object validation. Focused two-version replacement uses
+an in-process fixture through the existing broker authority. Real recipient
+child exits exercise five boundaries after intent sync, stage sync, rename,
+directory sync and completion sync. All retain consumed broker uncertainty and
+deny cold redispatch; valid inspection distinguishes observed file version from
+completed installation generation.
 
-At acceptance-contract publication, this milestone has no recorded test pass.
-Historical PR #4 process-service CI does not cover the new slot implementation.
+Directory/object, changed signed tuple, legacy-contract substitution and public
+negative tests cover their stated functional cases. These results do not prove
+power-loss durability, arbitrary syscall/storage failure handling, namespace
+confinement or a supported deployed filesystem. The
+[verification record](../verification.md) owns final integrated aggregate and
+hosted results; historical PR #4 CI does not cover this slot implementation.
 Functional implementation and tests do not resume or replace the previously
 stopped independent adversarial review.
 
