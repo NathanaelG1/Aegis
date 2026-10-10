@@ -45,7 +45,7 @@ The planned network API uses [vendor-neutral application authentication and exac
 The optional vault feature now includes three executable mechanisms:
 
 - [Mutually authenticated TLS](docs/tls-transport.md) with exact fixture peer/role binding and exporter-bound frames, carrying a reviewed canary delivery through the existing protocol.
-- [Bounded encrypted import](docs/protected-entry.md), using zeroizing input buffers, frozen review metadata and ciphertext-only no-clobber publication. The only accepted value is a built-in disposable canary.
+- [Bounded encrypted import](docs/protected-entry.md), using zeroizing input buffers, frozen review metadata and ciphertext-only no-clobber publication. Accepted values are compiled disposable canaries.
 - [Separate recipient execution](docs/recipient-process.md), using a fixed child executable, recipient-only runtime custody, bounded inherited IPC and the existing durable reservation/receipt path.
 
 The standalone drills remain available. A [composed canary flow](docs/composed-canary-flow.md)
@@ -109,6 +109,29 @@ one imported version, while focused tests exercise two-version replacement.
 This is a same-UID fixture, with no operational protected application, real-key
 entry or live provider. See [ADR 0021](docs/adr/0021-fixed-application-slot.md)
 and the remaining [operator decisions](docs/operator-live-trial-plan.md).
+
+## Two-import composed rotation milestone
+
+The separate [rotation drill](docs/composed-canary-rotation.md) consumes two
+independently reviewed and encrypted fixed-canary imports. Each actual imported
+ciphertext reaches its exact approved delivery through broker TLS and the
+recipient child, advancing the same file slot from generation one to two.
+The broker profile is frozen per process, so the second version and subsequent
+revoke use fresh authenticated phases over the same durable history.
+
+```sh
+cargo run --locked --offline --features application-slot --bin aegis-application-rotation -- /tmp/aegis-rotation-new
+cargo run --locked --offline --features application-slot --bin aegis-application-rotation -- inspect /tmp/aegis-rotation-new
+```
+
+The one-import command remains available. Live duplicates reuse their phase's
+outcome; restart restores evidence without restoring sessions or approval.
+Uncertain second installation retains both consumed uses and never authorizes
+retry, refund or rollback. The application file intentionally contains a public
+canary. These are fixed same-UID experiments; operational rotation, protected
+custody and real-key entry remain unavailable. The next operational adapters
+need the concrete [operator decisions](docs/operator-decisions.md), which are
+separate from later installation, access and credential approvals.
 
 ## What is being built
 

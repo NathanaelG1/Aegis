@@ -120,10 +120,10 @@ all development input disposable until the later gates are satisfied.
 | Work package | Existing seam | Required operational completion |
 | --- | --- | --- |
 | C1: Deployment admission | `vault::entry`; fixed metadata receipts | Trusted measurement/provenance for exact artifact, configuration, role enrollment and boundary evidence; freshness and invalidation on change; revalidation at use. Signed caller-authored claims alone cannot certify the host. Unsupported/missing evidence must deny before any secret read. |
-| C2: Role-specific custody and operator entry | `vault::store::{Kit, BrokerMaterial, RecipientMaterial}`; private crypto types | Independent role provisioning/loaders, protected unlock/lock/version/rotation, bounded user-entry interface and transactional encrypted import. No all-role production kit, plaintext argv/environment/log input, general export API or agent-supplied private value. Recovery must work without granting the agent custody. |
+| C2: Role-specific custody and operator entry | `vault::store::{Kit, BrokerMaterial, RecipientMaterial}`; private crypto types; [two independently reviewed canary imports](composed-canary-rotation.md) | Two fixed imports exercise exact version/profile bindings and one-shot import consumption; they do not implement protected user input or custody. Operational completion requires independently provisioned role stores/loaders, protected unlock/lock/version/rotation, bounded user entry and transactional import/recovery. Select the actual custody/unlock and independent human mechanisms through [operator decisions](operator-decisions.md). No all-role production kit, plaintext argv/environment/log input, general export API or agent-supplied private value; recovery must not grant agent custody. |
 | C3: Human and connector identity | `vault::auth`; separate `AgentEndpoint`/`AdminEndpoint` | Operational enrollment/revocation and protected proof injection; genuine human interaction on an independent client bound to the exact displayed plan. Strict role/purpose/audience/epoch binding; no synthetic actor, header or local username may substitute for identity. |
 | C4: Authenticated encrypted transport and time | `vault::tls::socket`, `vault::process_service`, framing and role-specific protocol handlers | The closed process service now has bounded actual inherited socket I/O and separate broker/client ownership. Operational accept/admission policy, independently owned admin routing, trust/enrollment renewal and exact deployment ACLs remain open. The journal/proof clock is still fixed fixture time; trusted UTC, reboot/suspend behavior and complete lifecycle evidence remain required. Two inherited channels do not implement a deployed connection service. |
-| C5: Real recipient handoff | `vault::process_recipient`, durable `Store::Recipient`, runtime `Adapter::execute`, and the [fixed application-slot mechanism](application-slot.md) | The canary increment now installs one actual fixed file with handle-relative staging/replacement, synchronized intent/file/directory state and signed installation/generation evidence. Focused actual-child crash, replacement and public inspection tests pass; legacy encrypted acceptance remains distinct. Operational completion still requires an enrolled immutable application/dependency/configuration closure, recipient-only protected destination, measured namespace/identity protection, lifecycle/cleanup and mechanism-specific deployment fault evidence. One imported version in the full composition and focused in-process two-version replacement tests cannot establish a general rotation service. |
+| C5: Real recipient handoff | `vault::process_recipient`, durable `Store::Recipient`, runtime `Adapter::execute`, [fixed application slot](application-slot.md) and [composed rotation](composed-canary-rotation.md) | The one-import slot has focused functional evidence; the bounded two-import contract extends actual broker/TLS/child replacement to generations one and two with retained receipts and second-install crash semantics. Exact-source results belong in [verification](verification.md); a contract or expected result is not a passed test. Neither composition establishes operational rotation. Completion still requires the selected immutable application/dependency/configuration closure, recipient-only protected destination, measured namespace/identity protection, lifecycle/cleanup and deployment-specific fault evidence. |
 | C6: Protected state and independent anchor | `vault::store` journal/guard/anchor | Operational backend with protected namespace, crash-safe transitions and independently authenticated compare/advance/fencing outside the broker/recipient restore domain. Detect coherent old-state restore or deletion; unavailable anchor denies. Specify recovery and ambiguous-handoff reconciliation without retry, refund or restored sessions/approval. |
 | C7: Lifecycle, audit and incident controls | Core reserve/revoke and synthetic inspection | Fresh epochs and authentication on restart; durable budgets, revocation and uncertainty; concurrent-wake fencing; actual suspend/clock/kill behavior. Bounded operator audit records for exact versions/identities/decisions/outcomes; no secret, token fingerprint, raw proof or diagnostic payload in agent-facing status/logs. Distinguish future-delivery revoke, recipient cleanup and provider revoke. |
 | C8: Narrow provider use and release packaging | Synthetic GitHub/signing paths; no live adapter | If the trial exercises a provider, implement only its selected read-only operation with fixed endpoint/resource/scope, validated encrypted transport, no redirect/proxy substitution, safe output and provider-side expiry/revoke evidence. Package a pinned build/dependency inventory and protected update path; test the actual connector and recipient, not just library calls. |
@@ -136,18 +136,26 @@ credential delivery. [Entry](operator-entry-contract.md),
 [transport](vault-transport-contract.md) and
 [delivery](application-delivery.md) contracts remain the detailed constraints.
 
-## 4. OPERATOR actions requiring specific approval
+## 4. Operator choices and later action approvals
 
-The operator owns these actions; writing code or approving synthetic development
-does not authorize them. Bundle requests once exact targets and consequences
-are known, using the [existing ceremony](operator-owned-deployment.md).
+First answer the six [operator design questions](operator-decisions.md). Keep
+the established selected-personal-repository GitHub App use case. Naming a
+host, custody candidate or client selects the implementation target; it does
+not authorize actions on it. The protected-entry and isolated-recipient
+adapters remain code work after the two-import mechanism composition.
 
-1. **Select the boundary.** Name the host/account, OS/filesystem, costs, fixed GitHub recipient build,
-   custody backend, independent human client and anchor/recovery location.
-   Keep the established selected-personal-repository GitHub App use case;
-   resolve its exact App/installation/repository IDs during operator enrollment. Verify
-   that provider controls can enforce the proposed separation before purchasing
-   or changing anything. No provider is selected by this document.
+The operator owns the later actions below. Writing code or approving synthetic
+development does not authorize them. Bundle approval requests once exact
+targets and consequences are known, using the
+[existing ceremony](operator-owned-deployment.md).
+
+1. **Approve exact provisioning when needed.** After the design choices are
+   resolved, specify the host/account, OS/filesystem, fixed recipient build,
+   custody backend, independent human client and anchor/recovery domain. Verify
+   that the proposed controls can enforce separation, then seek approval for
+   any actual provisioning, price/commitment or access changes. Resolve exact
+   GitHub App/installation/repository IDs during separately approved enrollment.
+   No provider, purchase or credential creation is selected by this document.
 2. **Approve a canary-only installation.** Approve the precise host identities,
    service/configuration changes, transport/network exposure, enrollment and
    pinned artifact digest. Operator provisioning keeps each private role value

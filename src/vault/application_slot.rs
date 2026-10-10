@@ -109,7 +109,13 @@ pub fn run_synthetic_application_slot_drill(
     {
         return Err(ErrorCode::ReconciliationRequired);
     }
-    Ok(ApplicationSlotReport {
+    Ok(report_from_service(report, inspected))
+}
+pub(super) fn report_from_service(
+    report: process_service::ProcessServiceReport,
+    inspected: ApplicationSlotRecoveryReport,
+) -> ApplicationSlotReport {
+    ApplicationSlotReport {
         synthetic_only: true,
         input_import_bound: true,
         authenticated_role_channels: report.authenticated_role_channels,
@@ -140,7 +146,7 @@ pub fn run_synthetic_application_slot_drill(
         protected_custody_verified: false,
         protected_deployment_verified: false,
         ready_for_real_keys: false,
-    })
+    }
 }
 
 /// Inspect only. No directory/file is created, written, repaired or replayed.
@@ -148,6 +154,11 @@ pub fn inspect_synthetic_application_slot(
     root: &Path,
 ) -> Result<ApplicationSlotRecoveryReport, ErrorCode> {
     let r = process_service::inspect_contract(root, ReceiptContract::Installation)?;
+    recovery_from_observation(r)
+}
+pub(super) fn recovery_from_observation(
+    r: process_service::Observation,
+) -> Result<ApplicationSlotRecoveryReport, ErrorCode> {
     let installed_version = r
         .installed_version
         .ok_or(ErrorCode::ReconciliationRequired)?;
@@ -678,11 +689,11 @@ static CHILD_FAULT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUs
 #[cfg(test)]
 pub(super) fn set_child_fault(mode: &str) -> Result<(), ErrorCode> {
     let point = match mode {
-        "slot-recipient-exit-intent" => 1,
-        "slot-recipient-exit-stage" => 2,
-        "slot-recipient-exit-rename" => 3,
-        "slot-recipient-exit-directory" => 4,
-        "slot-recipient-exit-receipt" => 5,
+        "slot-recipient-exit-intent" | "slot-rotation-recipient-exit-intent" => 1,
+        "slot-recipient-exit-stage" | "slot-rotation-recipient-exit-stage" => 2,
+        "slot-recipient-exit-rename" | "slot-rotation-recipient-exit-rename" => 3,
+        "slot-recipient-exit-directory" | "slot-rotation-recipient-exit-directory" => 4,
+        "slot-recipient-exit-receipt" | "slot-rotation-recipient-exit-receipt" => 5,
         _ => return Err(ErrorCode::InvalidRequest),
     };
     CHILD_FAULT.store(point, std::sync::atomic::Ordering::SeqCst);

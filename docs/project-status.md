@@ -2,6 +2,32 @@
 
 Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
+## Two-import composed rotation checkpoint (10 October 2026)
+
+The separate [rotation drill](composed-canary-rotation.md) now carries two
+independently reviewed encrypted canaries through exact TLS broker approvals
+and the recipient child to the same fixed application file. Fresh authenticated
+broker phases preserve the frozen profile, advancing installation generations
+one then two and retaining both consumed uses and durable revoke. The original
+one-import command remains available.
+
+All 338 library tests and seven enabled rotation CLI tests pass locally; the
+existing eight slot tests remain green. Actual second-recipient exits at five
+installation boundaries preserve predecessor/completion evidence and consumed
+uncertainty without retry or refund. Full default/all-feature totals are
+166/466 plus exactly the unchanged 14 local listener restrictions, with zero
+ignored tests. Doctests passed 1/28; formatting, Clippy and rustdoc passed.
+Exact-source limits and the hosted-CI requirement are in [verification](verification.md).
+Dependencies and live-entry refusal are unchanged.
+
+This closes the fixed two-import composition gap, while operational rotation
+and protected custody remain unavailable. The next implementation target needs
+the concrete [operator decisions](operator-decisions.md): host and retained
+agent access, recipient/install closure, custody/unlock constraints, independent
+human client and independent recovery/anchor. Design answers do not authorize
+provisioning, access/security changes, deployment or real credential entry.
+The stopped independent review remains unresolved.
+
 ## Fixed application-slot checkpoint (10 October 2026)
 
 The optional [application-slot drill](application-slot.md) now installs the actual
@@ -17,8 +43,10 @@ scoped two-version replacement. Default/vault-only refusal passed three tests
 each. Final default/all-feature aggregates have 163/449 passes plus the unchanged
 14 denied listener cases, with zero ignored tests; 1/28 doctests and all quality
 checks passed. Integration found and fixed an invalid-version arithmetic panic
-without relaxing its existing regression. Exact-source details and the later
-hosted-CI requirement are in [verification](verification.md).
+without relaxing its existing regression. The exact published head then passed
+all 177 default and 463 all-feature tests, including every listener case,
+1/28 doctests and all quality checks. Exact-source details are in
+[verification](verification.md).
 
 This is actual dummy file installation on an UNISOLATED development host.
 Read-only recovery distinguishes observed file version from completed receipt
