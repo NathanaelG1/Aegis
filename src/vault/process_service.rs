@@ -19,7 +19,7 @@ use super::{
     tls::socket::{self, ClientFactory, ServerMaterial, SocketClient},
 };
 use crate::{
-    ErrorCode, Lifecycle, MonotonicClock, OperationIntent, OperationPrepareInput, OperationRunView,
+    ErrorCode, Lifecycle, ManualClock, OperationIntent, OperationPrepareInput, OperationRunView,
     ProfileId, RequestId,
 };
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -680,12 +680,14 @@ fn broker_service(root: &Path, create: bool) -> Result<(), ErrorCode> {
     store.check_imported_record(&root.join("input"))?;
     let recipient =
         ProcessRecipient::from_supervised_stream(broker.material, inherited(std::io::stderr())?)?;
+    // Preserve the existing fixed-fixture journal clock across cold starts.
+    // TLS I/O and the owning supervisor enforce real absolute wall-time bounds.
     let protocol = SyntheticProtocol::assemble(
         broker.enrollment,
         store,
         recipient,
         1,
-        Arc::new(MonotonicClock::default()),
+        Arc::new(ManualClock::default()),
     )?;
     let material = ServerMaterial::open(&root.join("tls/broker"))?;
     let agent_stream = inherited(std::io::stdin())?;
@@ -872,6 +874,53 @@ mod tests {
     }
 
     #[test]
+    fn elapsed_first_phase_can_reopen_and_append_cold_revocation() {
+        let paths = Paths::new();
+        let fixture = paths.bootstrap();
+        let (mut supervisor, mut channels, deadline) =
+            start_phase(&paths.0, &fixture.vault_id, true).unwrap();
+        channels.connect().unwrap();
+        let invocation = channels.approve().unwrap();
+        let handle = json!({"prepared_request_id": invocation["prepared_request_id"]});
+        // Keep both bounded TLS streams active while the first process's real
+        // clock crosses one second. A reset elapsed-time journal clock would
+        // then reject a new process's earlier revocation timestamp.
+        let started = Instant::now();
+        for _ in 0..12 {
+            thread::sleep(Duration::from_millis(100));
+            assert!(is_kind(
+                &channels.agent("discover_operations", json!({})).unwrap(),
+                "catalog"
+            ));
+            assert!(is_kind(
+                &exchange(&mut channels.admin, "inspect_review", &handle).unwrap(),
+                "review"
+            ));
+        }
+        assert!(started.elapsed() >= Duration::from_secs(1));
+        let run: OperationRunView = value(
+            channels.agent("invoke_approved", &invocation).unwrap(),
+            "run",
+        )
+        .unwrap();
+        assert_eq!(run.state, Lifecycle::Succeeded);
+        channels.close().unwrap();
+        drop(channels);
+        supervisor.finish(deadline).unwrap();
+
+        let (mut supervisor, mut channels, deadline) =
+            start_phase(&paths.0, &fixture.vault_id, false).unwrap();
+        assert_eq!(channels.connect().unwrap(), (true, true));
+        channels.revoke().unwrap();
+        channels.close().unwrap();
+        drop(channels);
+        supervisor.finish(deadline).unwrap();
+        let observation = inspect(&paths.0).unwrap();
+        assert_eq!((observation.consumed, observation.generation), (1, 1));
+        assert!(observation.revoked && observation.revoked_admission_denied);
+    }
+
+    #[test]
     fn killing_actual_broker_reaps_its_live_recipient_without_dispatch() {
         let paths = Paths::new();
         let fixture = paths.bootstrap();
@@ -900,6 +949,22 @@ mod tests {
         let fixture = paths.bootstrap();
         let (mut supervisor, channels, _) = start_phase(&paths.0, &fixture.vault_id, true).unwrap();
         let ids = pids(&mut supervisor);
+        drop(channels);
+        drop(supervisor);
+        reaped(ids);
+        assert_eq!(inspect(&paths.0).unwrap().consumed, 0);
+    }
+
+    #[test]
+    fn expired_supervisor_deadline_reaps_both_live_children() {
+        let paths = Paths::new();
+        let fixture = paths.bootstrap();
+        let (mut supervisor, channels, _) = start_phase(&paths.0, &fixture.vault_id, true).unwrap();
+        let ids = pids(&mut supervisor);
+        assert_eq!(
+            supervisor.finish(Instant::now()),
+            Err(ErrorCode::BrokerUnavailable)
+        );
         drop(channels);
         drop(supervisor);
         reaped(ids);
