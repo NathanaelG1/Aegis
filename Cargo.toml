@@ -11,6 +11,7 @@ default-run = "aegis"
 
 [features]
 default = []
+application-slot = ["vault-spike", "dep:rustix"]
 storage-spike = ["dep:age"]
 vault-spike = ["storage-spike", "signing-spike", "dep:rustls", "dep:rcgen"]
 signing-spike = ["dep:jsonwebtoken", "dep:aws-lc-rs", "dep:pkcs8", "dep:base64", "dep:zeroize"]
@@ -36,6 +37,7 @@ rustls = { version = "=0.23.45", default-features = false, features = ["std", "a
 rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "aws_lc_rs", "zeroize"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
+rustix = { version = "=1.1.5", default-features = false, features = ["std", "fs"], optional = true }
 nix = { version = "=0.29.0", default-features = false, features = ["socket", "user"] }
 
 [lints.rust]

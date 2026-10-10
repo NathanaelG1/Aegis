@@ -21,3 +21,21 @@ unchanged; the all-feature graph adds 12 package identities. See the
 for the explicit AWS-LC configuration and the upstream advisory motivating the
 Rustls pin. The inventory and that specific advisory check do not constitute a
 complete dependency, license or security audit.
+
+The separate optional `application-slot` feature adds exact Rustix 1.1.5 with
+only its `std` and `fs` features enabled. Its declared license is
+`Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT`; the selected filesystem
+support introduces linux-raw-sys 0.12.1 (`Apache-2.0 WITH LLVM-exception OR
+Apache-2.0 OR MIT`) on the observed Linux target. Cargo.lock also resolves errno
+0.3.14 (`MIT OR Apache-2.0`) for other configurations; it is not selected in the
+observed Linux build graph. These declarations
+come from the pinned registry packages and do not replace their upstream notices.
+Rustix supplies owned-descriptor filesystem APIs so first-party code can retain
+its forbidden-unsafe-code rule. The library itself does not sandbox ambient
+authority or establish a protected application boundary. See the
+[application-slot contract](docs/application-slot.md) for the fixed-canary scope;
+the [Linux application-slot inventory](docs/dependency-inventory-linux-application-slot.json)
+records 19 default, 127 storage-only, 39 signing-only, 156 vault-only, and 158
+application-slot/all-feature package identities. Comparing the prior source
+with the same method confirms the first four selected graphs are unchanged.
+No complete dependency, license or security audit is claimed.

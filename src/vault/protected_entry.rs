@@ -11,12 +11,15 @@
 //! aegis::vault::entry::protected_entry::run_synthetic_protected_entry_drill(
 //!     std::path::Path::new("/tmp/fixture"), b"credential");
 //! ```
-use super::{reviewed_fixture, CanaryReservation, Ceremony, FrozenReview, RoleBinding};
+use super::{
+    reviewed_fixture, Bindings, CanaryReservation, Ceremony, FixtureReceipt, FrozenReview,
+    Prerequisite, RoleBinding, LIFETIME,
+};
 use crate::{
     vault::{
         crypto::{self, Identity, PrivateBytes},
         model::{DeliveryParameters, DeliveryProfile, SecretReference},
-        store::{self, BrokerMaterial},
+        store::{self, BrokerMaterial, ReceiptContract},
     },
     ErrorCode, ManualClock,
 };
@@ -79,15 +82,74 @@ struct BrokerImportBinding {
     profile: DeliveryProfile,
 }
 impl BrokerImportBinding {
+    #[cfg(test)]
     fn fixture(kit: &BrokerMaterial) -> Self {
+        Self::for_version(kit, ReceiptContract::Acceptance, ImportVersion::One)
+    }
+    fn for_version(
+        kit: &BrokerMaterial,
+        contract: ReceiptContract,
+        version: ImportVersion,
+    ) -> Self {
         Self {
             vault_id: kit.vault_id.clone(),
             writer_key_digest: crypto::hash(kit.writer.verifier().fixture_der()),
             recipient_key_digest: crypto::hash(kit.recipient.to_string().as_bytes()),
             receipt_key_digest: crypto::hash(kit.receipt.fixture_der()),
-            secret: DeliveryParameters::fixture(1).secret,
-            profile: DeliveryProfile::fixture(1),
+            secret: version.reference(),
+            profile: contract.profile(version.number()),
         }
+    }
+}
+// The closed import set does not admit caller-supplied values or version numbers.
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum ImportVersion {
+    One,
+    #[cfg(feature = "application-slot")]
+    Two,
+}
+impl ImportVersion {
+    fn number(self) -> u64 {
+        match self {
+            Self::One => 1,
+            #[cfg(feature = "application-slot")]
+            Self::Two => 2,
+        }
+    }
+    fn reference(self) -> SecretReference {
+        DeliveryParameters::fixture(self.number()).secret
+    }
+    fn from_reference(reference: &SecretReference) -> Result<Self, ErrorCode> {
+        let version = match reference.version {
+            1 => Self::One,
+            #[cfg(feature = "application-slot")]
+            2 => Self::Two,
+            _ => return Err(ErrorCode::InvalidProviderResult),
+        };
+        if *reference != version.reference() {
+            return Err(ErrorCode::InvalidProviderResult);
+        }
+        Ok(version)
+    }
+    fn bindings(self) -> Bindings {
+        Bindings {
+            secret_version: self.number(),
+            recipient_generation: self.number() - 1,
+            ..Bindings::fixture()
+        }
+    }
+    fn canary(self) -> &'static [u8] {
+        match self {
+            Self::One => store::CANARY_ONE.as_bytes(),
+            #[cfg(feature = "application-slot")]
+            Self::Two => store::CANARY_TWO.as_bytes(),
+        }
+    }
+    fn check_contract(self, contract: ReceiptContract) -> Result<(), ErrorCode> {
+        if self != Self::One && contract == ReceiptContract::Acceptance {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        Ok(())
     }
 }
 struct Input {
@@ -320,8 +382,17 @@ impl<'a> ImportSession<'a> {
         }
         let input = Input::read(reader, || self.reading(&mut *self.lock()?, current))?;
         // Defense in depth: even private integration cannot import arbitrary bytes.
-        let expected = if self.review.broker.is_some() {
-            store::CANARY_ONE.as_bytes()
+        let expected = if let Some(binding) = &self.review.broker {
+            let version = ImportVersion::from_reference(&binding.secret)?;
+            if self.review.entry.bindings != version.bindings()
+                || binding.profile.secret != binding.secret
+                || binding.profile.validate().is_err()
+                || (version != ImportVersion::One
+                    && binding.profile == DeliveryProfile::fixture(version.number()))
+            {
+                return Err(ErrorCode::PolicyChanged);
+            }
+            version.canary()
         } else {
             CANARY
         };
@@ -579,15 +650,47 @@ pub(in crate::vault) struct ImportedCanary {
     ciphertext_digest: String,
 }
 impl ImportedCanary {
+    #[cfg(test)]
     pub(in crate::vault) fn consume(
         self,
         kit: &BrokerMaterial,
     ) -> Result<(Vec<u8>, String), ErrorCode> {
-        if self.review.broker != Some(BrokerImportBinding::fixture(kit))
+        self.consume_contract(kit, ReceiptContract::Acceptance)
+    }
+    pub(in crate::vault) fn consume_contract(
+        self,
+        kit: &BrokerMaterial,
+        contract: ReceiptContract,
+    ) -> Result<(Vec<u8>, String), ErrorCode> {
+        self.consume_version(kit, contract, ImportVersion::One)
+    }
+    #[cfg(feature = "application-slot")]
+    pub(in crate::vault) fn consume_rotation(
+        imported: [Self; 2],
+        kit: &BrokerMaterial,
+    ) -> Result<[(Vec<u8>, String); 2], ErrorCode> {
+        let [first, second] = imported;
+        if first.review.entry.instance == second.review.entry.instance
+            || first.review.destination == second.review.destination
+        {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        let contract = ReceiptContract::Installation;
+        Ok([
+            first.consume_version(kit, contract, ImportVersion::One)?,
+            second.consume_version(kit, contract, ImportVersion::Two)?,
+        ])
+    }
+    fn consume_version(
+        self,
+        kit: &BrokerMaterial,
+        contract: ReceiptContract,
+        version: ImportVersion,
+    ) -> Result<(Vec<u8>, String), ErrorCode> {
+        version.check_contract(contract)?;
+        if self.review.broker != Some(BrokerImportBinding::for_version(kit, contract, version))
             || self.review.storage_recipient != kit.storage.recipient().to_string()
-            || self.review.entry.bindings.secret_reference != "synthetic-provider-key"
-            || self.review.entry.bindings.secret_version != 1
-            || self.review.entry.bindings.recipient_generation != 0
+            || self.review.entry.bindings != version.bindings()
         {
             return Err(ErrorCode::PolicyChanged);
         }
@@ -598,10 +701,12 @@ impl ImportedCanary {
         let metadata = serde_json::to_vec(&self.review).map_err(|_| ErrorCode::InvalidRequest)?;
         let metadata_digest = crypto::hash(&metadata);
         let clear = kit.storage.decrypt(&ciphertext)?;
-        decode_imported_value(
+        decode_imported_for(
             &clear.0,
             &metadata_digest,
-            &DeliveryParameters::fixture(1).secret,
+            &version.reference(),
+            kit,
+            contract,
         )?;
         Ok((ciphertext, metadata_digest))
     }
@@ -627,11 +732,8 @@ pub(in crate::vault) fn decode_imported_value(
     metadata_digest: &str,
     reference: &SecretReference,
 ) -> Result<PrivateBytes, ErrorCode> {
-    if reference != &DeliveryParameters::fixture(1).secret
-        || clear.len() < 16
-        || clear.len() > crypto::MAX_CLEAR
-        || &clear[..8] != ENVELOPE_MAGIC
-    {
+    let version = ImportVersion::from_reference(reference)?;
+    if clear.len() < 16 || clear.len() > crypto::MAX_CLEAR || &clear[..8] != ENVELOPE_MAGIC {
         return Err(ErrorCode::InvalidProviderResult);
     }
     let metadata_len = u32::from_be_bytes(
@@ -654,22 +756,131 @@ pub(in crate::vault) fn decode_imported_value(
             .map_err(|_| ErrorCode::InvalidProviderResult)?,
     ) as usize;
     let input = &clear[end + 4..];
-    if input_len != input.len() || input_len > MAX_INPUT || input != store::CANARY_ONE.as_bytes() {
+    if input_len != input.len() || input_len > MAX_INPUT || input != version.canary() {
         return Err(ErrorCode::InvalidProviderResult);
     }
     Ok(PrivateBytes(input.to_vec()))
+}
+
+/// The frozen import metadata must name the exact current installation or acceptance profile.
+pub(in crate::vault) fn decode_imported_for(
+    clear: &[u8],
+    metadata_digest: &str,
+    reference: &SecretReference,
+    kit: &BrokerMaterial,
+    contract: ReceiptContract,
+) -> Result<PrivateBytes, ErrorCode> {
+    decode_imported_evidence(clear, metadata_digest, reference, kit, contract)
+        .map(|(input, _, _)| input)
+}
+pub(in crate::vault) fn decode_imported_evidence(
+    clear: &[u8],
+    metadata_digest: &str,
+    reference: &SecretReference,
+    kit: &BrokerMaterial,
+    contract: ReceiptContract,
+) -> Result<(PrivateBytes, [u8; 16], PathBuf), ErrorCode> {
+    let input = decode_imported_value(clear, metadata_digest, reference)?;
+    let length = u32::from_be_bytes(
+        clear[8..12]
+            .try_into()
+            .map_err(|_| ErrorCode::InvalidProviderResult)?,
+    ) as usize;
+    let metadata: serde_json::Value = serde_json::from_slice(&clear[12..12 + length])
+        .map_err(|_| ErrorCode::InvalidProviderResult)?;
+    let version = ImportVersion::from_reference(reference)?;
+    version.check_contract(contract)?;
+    let instance: [u8; 16] = serde_json::from_value(metadata["entry"]["instance"].clone())
+        .map_err(|_| ErrorCode::InvalidProviderResult)?;
+    let destination: PathBuf = serde_json::from_value(metadata["destination"].clone())
+        .map_err(|_| ErrorCode::InvalidProviderResult)?;
+    validate_destination(&destination)?;
+    // Every imported fixture starts at the fixed clock origin. Reconstruct all
+    // frozen prerequisite evidence, rather than accepting selected JSON fields.
+    // The random ceremony identifier and original destination remain authenticated
+    // by the signed metadata digest; all other fields have exact fixture values.
+    let bindings = version.bindings();
+    let expected = ImportReview {
+        entry: FrozenReview {
+            instance,
+            bindings: bindings.clone(),
+            receipts: Prerequisite::ALL.map(|prerequisite| FixtureReceipt {
+                instance,
+                bindings: bindings.clone(),
+                prerequisite,
+                observer: prerequisite.observer(&bindings).clone(),
+                observed_at: 0,
+                expires_at: LIFETIME,
+            }),
+            expires_at: LIFETIME,
+            canary_use_limit: 1,
+        },
+        destination: destination.clone(),
+        storage_recipient: kit.storage.recipient().to_string(),
+        input_contract: 1,
+        maximum_input_bytes: MAX_INPUT,
+        broker: Some(BrokerImportBinding::for_version(kit, contract, version)),
+    };
+    if metadata != serde_json::to_value(expected).map_err(|_| ErrorCode::InvalidProviderResult)? {
+        return Err(ErrorCode::PolicyChanged);
+    }
+    Ok((input, instance, destination))
 }
 
 pub(in crate::vault) fn import_delivery_canary(
     destination: &Path,
     kit: &BrokerMaterial,
 ) -> Result<ImportedCanary, ErrorCode> {
-    let ceremony = Ceremony::fixture(Arc::new(ManualClock::default()))?;
+    import_delivery_canary_contract(destination, kit, ReceiptContract::Acceptance)
+}
+pub(in crate::vault) fn import_delivery_canary_contract(
+    destination: &Path,
+    kit: &BrokerMaterial,
+    contract: ReceiptContract,
+) -> Result<ImportedCanary, ErrorCode> {
+    import_delivery_version(destination, kit, contract, ImportVersion::One)
+}
+#[cfg(feature = "application-slot")]
+pub(in crate::vault) fn import_delivery_rotation_canaries(
+    first_destination: &Path,
+    second_destination: &Path,
+    kit: &BrokerMaterial,
+) -> Result<[ImportedCanary; 2], ErrorCode> {
+    validate_destination(first_destination)?;
+    validate_destination(second_destination)?;
+    if first_destination == second_destination {
+        return Err(ErrorCode::InvalidRequest);
+    }
+    Ok([
+        import_delivery_version(
+            first_destination,
+            kit,
+            ReceiptContract::Installation,
+            ImportVersion::One,
+        )?,
+        import_delivery_version(
+            second_destination,
+            kit,
+            ReceiptContract::Installation,
+            ImportVersion::Two,
+        )?,
+    ])
+}
+fn import_delivery_version(
+    destination: &Path,
+    kit: &BrokerMaterial,
+    contract: ReceiptContract,
+    version: ImportVersion,
+) -> Result<ImportedCanary, ErrorCode> {
+    version.check_contract(contract)?;
+    let mut ceremony = Ceremony::fixture(Arc::new(ManualClock::default()))?;
+    // Bind the version before collecting receipts or freezing either review.
+    ceremony.bindings = version.bindings();
     let mut session = ImportSession::fixture(&ceremony, destination, &kit.storage)?;
-    session.review.broker = Some(BrokerImportBinding::fixture(kit));
+    session.review.broker = Some(BrokerImportBinding::for_version(kit, contract, version));
     session.approve(&ceremony.bindings.operator, &session.review)?;
     session.import(
-        &mut Cursor::new(&canary_frame(store::CANARY_ONE.as_bytes()).0),
+        &mut Cursor::new(&canary_frame(version.canary()).0),
         &session.review,
         &kit.storage,
         Fault::None,

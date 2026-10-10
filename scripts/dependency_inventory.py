@@ -15,12 +15,17 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--target", default=host, help="Metadata target only; this does not build or test that platform")
 parser.add_argument("--output", default=str(ROOT / "docs" / "dependency-inventory.json"), help="Inventory destination; use a distinct name to retain earlier platform evidence")
 parser.add_argument("--signing", action="store_true", help="Also record optional signing and combined feature graphs")
+parser.add_argument("--application-slot", action="store_true", help="Also record vault-only and fixed application-slot feature graphs")
 args = parser.parse_args()
 TARGET = args.target
 output = {"target": TARGET, "selection": "cargo tree normal/build/dev graph; not a compilation attestation", "configurations": {}}
 configurations = [("default", []), ("storage-spike", ["--features", "storage-spike"])]
-if args.signing:
-    configurations += [("signing-spike", ["--features", "signing-spike"]), ("all-features", ["--all-features"])]
+if args.signing or args.application_slot:
+    configurations.append(("signing-spike", ["--features", "signing-spike"]))
+if args.application_slot:
+    configurations += [("vault-spike", ["--features", "vault-spike"]), ("application-slot", ["--features", "application-slot"])]
+if args.signing or args.application_slot:
+    configurations.append(("all-features", ["--all-features"]))
 for name, extra in configurations:
     metadata = json.loads(subprocess.check_output([
         "cargo", "metadata", "--locked", "--offline", "--format-version", "1",

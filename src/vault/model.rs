@@ -82,8 +82,24 @@ impl DeliveryProfile {
             output_contract: 1,
         }
     }
+    #[cfg(feature = "application-slot")]
+    pub(crate) fn installation(version: u64) -> Self {
+        Self {
+            adapter_contract: 2,
+            output_contract: 2,
+            ..Self::fixture(version)
+        }
+    }
     pub(crate) fn validate(&self) -> Result<(), ErrorCode> {
-        if !matches!(self.secret.version, 1 | 2) || *self != Self::fixture(self.secret.version) {
+        // Reject untrusted versions before constructing a fixture whose generation
+        // is version minus one. Both accepted contract variants share this bound.
+        if !matches!(self.secret.version, 1 | 2) {
+            return Err(ErrorCode::InvalidRequest);
+        }
+        let valid = *self == Self::fixture(self.secret.version);
+        #[cfg(feature = "application-slot")]
+        let valid = valid || *self == Self::installation(self.secret.version);
+        if !valid {
             return Err(ErrorCode::InvalidRequest);
         }
         Ok(())
@@ -111,5 +127,24 @@ impl DeliveryProjection {
             && self.slot == p.recipient.slot
             && self.credential_version == p.secret.version
             && self.recipient_generation == p.secret.version
+    }
+}
+
+#[cfg(all(test, feature = "application-slot"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_versions_are_rejected_for_both_delivery_contracts() {
+        for template in [
+            DeliveryProfile::fixture(1),
+            DeliveryProfile::installation(1),
+        ] {
+            for version in [0, 3, u64::MAX] {
+                let mut profile = template.clone();
+                profile.secret.version = version;
+                assert_eq!(profile.validate(), Err(ErrorCode::InvalidRequest));
+            }
+        }
     }
 }

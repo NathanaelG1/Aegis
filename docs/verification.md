@@ -1,14 +1,177 @@
 # Verification and evidence
 
+## Two-import composed rotation checkpoint (2026-10-10)
+
+Local tested runtime and acceptance-test source:
+`bad85d10229cead45b523382ba22f6b7243ed02b`. This increment starts from verified
+PR #5 head `e6e973ec8cccd2c8127d91af160c1a6d48bca322`, tree
+`40c7d3f276847fc5a50a92002e6a3a77c2baa5e1` (local equivalent `de9bf78`), and is
+stacked on the fixed-application-slot branch. This records local validation
+before publication; the associated draft PR must supply exact-head hosted CI.
+Historical green runs do not cover this increment.
+
+Environment: Debian 13.6 Linux x86_64, kernel 6.18.44, official Rust/Cargo 1.96.1.
+Cargo.toml and Cargo.lock are byte-identical to PR #5. The lockfile SHA-256
+remains `b3f92fa557f916e1c29e56603012eae4931f3afca0090764b1ccefe06f4ce2bf`.
+No dependencies, feature definitions, toolchain or CI permissions changed.
+
+- All 338 all-feature library tests passed. Ten new cases include seven
+  protected-entry binding/closed-version checks, one cross-record independent
+  ceremony check and two process-rotation tests.
+- The full fixed composition consumes two independently reviewed encrypted
+  imports, preserves both exact ciphertexts in the signed manifest/store, and
+  delivers each version through authenticated broker TLS and the recipient
+  child to the fixed application file. Generation one and then two are verified
+  in fresh inspection processes. Frozen per-process profiles require fresh
+  authentication between versions and again for revoke; this is not a deployed
+  continuous rotation service.
+- Each version receives its own exact signed broker approval. Live duplicates
+  reuse their phase's result; stale handles after restart and a stale version-one
+  proposal in the second phase are denied. Signed outcomes and both consumed
+  uses survive restart; sessions, approvals and run handles do not. A separate
+  earlier recipient test directly replays an old capsule; the composed CLI does
+  not expose a generic replay route.
+- Five actual second-recipient exits preserve the first completion, two consumed
+  uses, two remaining uses and an unknown second broker delivery. Intent/stage
+  exits retain version one and completed generation one. Rename/directory-sync
+  exits observe version two while completed generation remains one with pending
+  intent. Completion-sync-before-reply retains generation two with an unknown
+  broker outcome. Inspection is unchanged and no retry/refund is authorized.
+  The held predecessor descriptor still reads version one after replacement.
+  These are process-exit cases, not power-loss or full storage-error coverage.
+- Public acceptance passed seven enabled rotation tests and all eight existing
+  slot tests under both application-slot and all-feature configurations.
+  Default and vault-only refusal each passed three rotation and three slot
+  tests. Tests independently observe both imported ciphertexts, final canary2,
+  correlated manifest/broker/installation tuples, retained revoke, missing,
+  corrupt, signature-only-tampered and mixed evidence refusal, bounded outputs,
+  unchanged read-only inspection and root-scoped Linux child cleanup. Tuple
+  decoding is not signature verification; fresh runtime inspection supplies
+  cryptographic envelope/signature and actual file validation.
+- Full default/all-feature all-target runs with no fail-fast produced 166/466
+  passes, each with exactly the prior 14 locally denied listener cases and zero
+  ignored tests. Failure names match the PR #5 checkpoint and permission errors
+  remain present. Both local aggregate commands therefore fail; clean hosted
+  Linux must supply the complete listener result. No assertion was removed,
+  weakened or skipped, and no new regression required a correction.
+- Default/all-feature doctests passed 1/28. Formatting, unrestricted
+  all-feature/all-target Clippy and rustdoc with warnings denied passed. Focused
+  default/vault-only Clippy and all-feature/all-target cargo check passed too.
+
+The [rotation contract](composed-canary-rotation.md) records exact focused
+source checkpoints and the crash table. The [operator decision guide](operator-decisions.md)
+asks for host/access, recipient installation, custody/unlock, independent human
+client and recovery/anchor choices before selecting operational adapters.
+Aegis cannot reduce authority supplied independently by other GitHub connectors
+or credentials; those routes need their own inventory and any later approvals.
+
+All processes and fixture material share the development UID/control plane;
+reports remain UNISOLATED. The file intentionally contains a public canary.
+Operational custody/entry, independent human identity, immutable isolated
+recipient identity/destination, external rollback anchor, trusted time and
+admission/lifecycle, live provider integration and permissible assurance remain
+open. Real-key entry unconditionally refuses. The previously stopped independent
+adversarial review was not resumed or replaced.
+
+## Fixed application-slot checkpoint (2026-10-10)
+
+Local tested runtime and acceptance-test source:
+`a36dad47088234492c6659418ca83aa71b7f0d01`. The increment starts from verified
+PR #4 head `210a1b32d2986ce8d6673baeafcfe69399d0adb8`, tree
+`fa4d89c07531d3333b36cbb8b52f3813d1e4362e` (local equivalent `7e64b81`).
+It is stacked on the process-service branch. Its published head is
+`e6e973ec8cccd2c8127d91af160c1a6d48bca322` in
+[draft PR #5](https://github.com/NathanaelG1/Aegis/pull/5), tree
+`40c7d3f276847fc5a50a92002e6a3a77c2baa5e1`, identical to local final `de9bf78`.
+The API-created commits preserve PR #4 ancestry and map to local commits by
+identical tree hashes.
+
+Environment: Debian 13.6 Linux x86_64 development workspace, official Rust/Cargo
+1.96.1. Cargo.lock SHA-256 is
+`b3f92fa557f916e1c29e56603012eae4931f3afca0090764b1ccefe06f4ce2bf`.
+The optional `application-slot` feature adds pinned Rustix 1.1.5 and selects
+linux-raw-sys 0.12.1 on Linux. The [inventory](dependency-inventory-linux-application-slot.json)
+records 158 application-slot/all-feature packages; default/storage/signing/vault-only
+selected graphs remain unchanged at 19/127/39/156. The lock also resolves errno
+for other configurations. No toolchain, CI permission or deployment change occurs.
+
+- All 328 all-feature library tests passed. The eleven new results comprise six
+  directory-handle tests, three slot/receipt/import-contract tests, one actual
+  process crash test with five exit boundaries, and the profile-version guard
+  regression found during aggregate integration.
+- Public CLI acceptance passed eight enabled tests. Default and vault-only
+  refusal suites passed three each; explicit application-slot and all-feature
+  runs passed eight each. Actual imported ciphertext is unchanged between input
+  and vault, and the installed file contains the expected public version-one
+  canary. Review/import/manifest/capsule/receipt bind adapter/output contracts
+  2/2; the separate profile revision remains one. Legacy acceptance is refused
+  as installation evidence.
+- The normal process composition verifies one installation/use, generation and
+  observed version one, three remaining uses, duplicate reuse, fresh
+  authentication and durable revoke. Read-only inspection does not change
+  retained bytes, inode, mode or modification time, repair data, or restore
+  authority. Invalid/missing files, incorrect installed generation and legacy
+  receipt substitution fail closed. Marker/output and Linux process-cleanup
+  observations remain limited functional evidence.
+- A separate two-version fixture uses the existing broker authority to exercise
+  replacement. The new file has a new inode; a held prior descriptor still reads
+  the prior canary. The exact old receipt can be replayed without rolling the
+  installed file back. This is not version-two imported/TLS process composition.
+- Actual recipient exits after intent sync, staged-file sync, rename, directory
+  sync and signed-completion sync each retain one consumed unknown broker use,
+  three remaining uses, exact duplicate reuse and cold-admission refusal. A
+  fresh inspector reports observed file version separately from completed
+  generation and pending intent. It never creates a completion receipt or
+  retries an uncertain installation. The [slot contract](application-slot.md)
+  records the five tuples and distinguishes process exits from power cuts or a
+  full syscall/storage-error matrix.
+- Initial aggregate integration caught a real regression: fixture construction
+  preceded the version bound, so the existing invalid-version-zero test panicked.
+  The guard now runs before arithmetic; the original case and added zero/three/
+  maximum-version checks for both receipt contracts pass. No assertion was
+  removed or relaxed. The final full rerun, not that failed initial run, supplies
+  the results here.
+- Full default/all-feature all-target runs with `--no-fail-fast` produced
+  163/449 passes, each with exactly the same 14 locally denied listener cases
+  and zero ignored tests. Failure names match the preceding checkpoint;
+  permission errors remain present. Both local aggregate commands therefore
+  fail, and the hosted Linux run must supply the full listener result.
+- Default/all-feature doctests passed 1/28. Formatting, unrestricted
+  all-target/all-feature Clippy and all-feature rustdoc with warnings denied
+  passed. Focused default and vault-only Clippy also passed before integration.
+
+The exact published head subsequently passed
+[hosted CI run 38011394468](https://github.com/NathanaelG1/Aegis/actions/runs/38011394468)
+on Ubuntu 24.04.5 LTS x86_64, runner image `20261004.327.1`, Rust/Cargo 1.96.1.
+All 177 default and 463 all-feature tests passed, including all 328 library
+tests and all 21 Unix interface cases in both configurations. No tests failed
+or were ignored. Default/all-feature doctests passed 1/28; formatting,
+unrestricted Clippy and rustdoc passed. The log verifies the exact source and
+lockfile hash. This covers the one-import slot composition and focused
+in-process replacement; later composed rotation needs its own evidence.
+
+The actual application file intentionally contains a public canary. Every
+process, file and disposable key remains under the development UID/control
+plane. Handle-relative operations and signed installation receipts do not prove
+protected custody, immutable application code/configuration or independent
+human approval. The policy clock remains fixed fixture time; only transport and
+supervision use actual elapsed deadlines. Operational entry/custody, human
+client/enrollment, deployed admission/time, independent rollback anchor,
+lifecycle/provider integration and host assurance remain open. All live-key
+and protected-deployment gates remain false. The stopped independent review
+was not resumed or replaced by these ordinary implementation tests.
+
 ## Broker process service checkpoint (2026-10-10)
 
 Local tested runtime and acceptance-test commit:
 `77d4eaad98770bdaa776f6b9308077422e32aa28`, based on the tree of PR #3 head
 `85516f171a89d325ecb98419aa2a43cf74c02c96` (local equivalent `4f0b692`).
-This increment is stacked on the composed-canary branch; it does not merge or
-supersede the still-draft dependency. Hosted CI for this new source is pending
-publication and must be checked at its exact published head. Prior CI does not
-cover this process service.
+This increment is stacked on the composed-canary branch. Its published head is
+`210a1b32d2986ce8d6673baeafcfe69399d0adb8` in
+[draft PR #4](https://github.com/NathanaelG1/Aegis/pull/4), tree
+`fa4d89c07531d3333b36cbb8b52f3813d1e4362e`, identical to local final `7e64b81`.
+The API-created commits preserve PR #3 ancestry; local/remote commits are mapped
+by exact tree hashes.
 
 Environment: Debian 13.6 Linux x86_64 development workspace, official Rust/Cargo
 1.96.1. Cargo.lock remains byte-identical with SHA-256
@@ -46,6 +209,15 @@ There are no dependency, toolchain, feature-graph or CI permission changes.
   all-target/all-feature Clippy with warnings denied, and rustdoc with warnings
   denied passed. The worker also ran the production binary create/inspect path;
   the independent CLI tests cover that same public entry point.
+
+The exact published head subsequently passed
+[hosted CI run 38008817405](https://github.com/NathanaelG1/Aegis/actions/runs/38008817405)
+on Ubuntu 24.04.5 LTS x86_64, runner image `20261004.327.1`, with Rust/Cargo
+1.96.1. All 174 default and 444 all-feature all-target tests passed, including
+all 21 Unix interface cases in both configurations, with zero failures or
+ignored tests. Default/all-feature doctests passed 1/28; formatting, Clippy and
+rustdoc passed. The job log records the exact source SHA and unchanged lockfile.
+This evidence covers the process service, not later application-slot changes.
 
 The policy/journal clock remains fixed fixture time, while actual I/O and
 supervisor deadlines use Instant. An elapsed-first-phase test covers subsequent
