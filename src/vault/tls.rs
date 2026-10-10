@@ -1,8 +1,9 @@
 //! TLS 1.3 mutual authentication and exporter-bound framing, with ephemeral fixtures.
 //!
 //! The public surface accepts no keys, certificates, addresses or payloads. There
-//! is no listener or live-secret entry. Both sides run in this trusted process;
-//! cryptographic peer authentication is not independent custody or human presence.
+//! is no listener or live-secret entry. The standalone drill keeps both peers in
+//! one process; the crate-private fixture driver uses inherited sockets between
+//! disposable processes. Neither establishes independent custody or human presence.
 //!
 //! ```compile_fail
 //! use aegis::vault::tls::Channel;
@@ -10,6 +11,8 @@
 //! ```compile_fail
 //! use aegis::vault::tls::Enrollment;
 //! ```
+pub(super) mod socket;
+
 use super::{
     auth::Actors,
     crypto::PrivateBytes,
@@ -179,6 +182,7 @@ impl Fixtures {
 }
 // Protected setup, not certificate subject strings or request fields, owns roles.
 // Exact leaf DER pinning is additional to standard path/EKU/time/name validation.
+#[derive(Clone)]
 struct Enrollment {
     role: Role,
     client_pin: CertificateDer<'static>,
@@ -190,43 +194,66 @@ fn configs(
     client: Option<&Identity>,
     role: Role,
 ) -> Result<(Arc<ClientConfig>, Arc<ServerConfig>)> {
+    Ok((
+        client_config(root, client, role)?,
+        server_config(root, server, role)?,
+    ))
+}
+fn roots(root: &CertificateDer<'static>) -> Result<RootCertStore> {
     let mut roots = RootCertStore::empty();
     roots
         .add(root.clone())
         .map_err(|_| Failure::Configuration)?;
+    Ok(roots)
+}
+fn client_config(
+    root: &CertificateDer<'static>,
+    client: Option<&Identity>,
+    role: Role,
+) -> Result<Arc<ClientConfig>> {
     let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
-    let builder = ClientConfig::builder_with_provider(provider.clone())
+    let builder = ClientConfig::builder_with_provider(provider)
         .with_protocol_versions(&[&rustls::version::TLS13])
         .map_err(|_| Failure::Configuration)?
-        .with_root_certificates(roots.clone());
-    let mut client_config = match client {
+        .with_root_certificates(roots(root)?);
+    let mut config = match client {
         Some(id) => builder
             .with_client_auth_cert(vec![id.cert.clone()], id.key.clone_key())
             .map_err(|_| Failure::Configuration)?,
         None => builder.with_no_client_auth(),
     };
-    client_config.alpn_protocols = vec![role.alpn().to_vec()];
-    client_config.resumption = Resumption::disabled();
-    client_config.enable_early_data = false;
-    client_config.max_fragment_size = Some(4096);
-    let verifier = WebPkiClientVerifier::builder_with_provider(Arc::new(roots), provider.clone())
-        .build()
-        .map_err(|_| Failure::Configuration)?;
-    let mut server_config = ServerConfig::builder_with_provider(provider)
+    config.alpn_protocols = vec![role.alpn().to_vec()];
+    config.resumption = Resumption::disabled();
+    config.enable_early_data = false;
+    config.max_fragment_size = Some(4096);
+    Ok(Arc::new(config))
+}
+fn server_config(
+    root: &CertificateDer<'static>,
+    server: &Identity,
+    role: Role,
+) -> Result<Arc<ServerConfig>> {
+    let provider = Arc::new(rustls::crypto::aws_lc_rs::default_provider());
+    let verifier =
+        WebPkiClientVerifier::builder_with_provider(Arc::new(roots(root)?), provider.clone())
+            .build()
+            .map_err(|_| Failure::Configuration)?;
+    let mut config = ServerConfig::builder_with_provider(provider)
         .with_protocol_versions(&[&rustls::version::TLS13])
         .map_err(|_| Failure::Configuration)?
         .with_client_cert_verifier(verifier)
         .with_single_cert(vec![server.cert.clone()], server.key.clone_key())
         .map_err(|_| Failure::Configuration)?;
-    server_config.alpn_protocols = vec![role.alpn().to_vec()];
-    server_config.session_storage = Arc::new(NoServerSessionStorage {});
-    server_config.send_tls13_tickets = 0;
-    server_config.max_tls13_tickets = 0;
-    server_config.max_early_data_size = 0;
-    server_config.max_fragment_size = Some(4096);
-    // No custom verifier, key logger, system roots, proxy, DNS or socket is used.
-    Ok((Arc::new(client_config), Arc::new(server_config)))
+    config.alpn_protocols = vec![role.alpn().to_vec()];
+    config.session_storage = Arc::new(NoServerSessionStorage {});
+    config.send_tls13_tickets = 0;
+    config.max_tls13_tickets = 0;
+    config.max_early_data_size = 0;
+    config.max_fragment_size = Some(4096);
+    // Standard verifiers only: no system roots, proxies, DNS, or key logging.
+    Ok(Arc::new(config))
 }
+
 struct Budget {
     start: Instant,
     duration: Duration,
@@ -538,6 +565,15 @@ impl Channel {
         self.receive_at(wire, Instant::now())
     }
     fn receive_at(&mut self, wire: &[u8], now: Instant) -> Result<Vec<PrivateBytes>> {
+        self.receive_records_at(wire, now, false)
+            .map(|(bodies, _)| bodies)
+    }
+    fn receive_records_at(
+        &mut self,
+        wire: &[u8],
+        now: Instant,
+        allow_clean_close: bool,
+    ) -> Result<(Vec<PrivateBytes>, bool)> {
         let result = (|| {
             let tls = self.tls.as_mut().ok_or(Failure::Closed)?;
             self.budget.charge(wire.len(), now)?;
@@ -563,6 +599,15 @@ impl Channel {
                 }
                 let state = tls.process_new_packets().map_err(|_| Failure::Tls)?;
                 if state.peer_has_closed() {
+                    if allow_clean_close
+                        && state.plaintext_bytes_to_read() == 0
+                        && !self.decoder.pending()
+                        && output.is_empty()
+                        && input.position() == wire.len() as u64
+                    {
+                        self.budget.charge(0, Instant::now())?;
+                        return Ok((output, true));
+                    }
                     return Err(Failure::Closed);
                 }
                 loop {
@@ -582,7 +627,7 @@ impl Channel {
             if !output.is_empty() && !self.decoder.pending() {
                 self.receive_started = None;
             }
-            Ok(output)
+            Ok((output, false))
         })();
         if result.is_err() {
             self.close();

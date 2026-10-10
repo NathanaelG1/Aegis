@@ -2,6 +2,84 @@
 
 Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider, protected approval channel or audited release is available. Protected agent-blind application delivery is required but not yet implemented or verified.
 
+## Two-import composed rotation checkpoint (10 October 2026)
+
+The separate [rotation drill](composed-canary-rotation.md) now carries two
+independently reviewed encrypted canaries through exact TLS broker approvals
+and the recipient child to the same fixed application file. Fresh authenticated
+broker phases preserve the frozen profile, advancing installation generations
+one then two and retaining both consumed uses and durable revoke. The original
+one-import command remains available.
+
+All 338 library tests and seven enabled rotation CLI tests pass locally; the
+existing eight slot tests remain green. Actual second-recipient exits at five
+installation boundaries preserve predecessor/completion evidence and consumed
+uncertainty without retry or refund. Full default/all-feature totals are
+166/466 plus exactly the unchanged 14 local listener restrictions, with zero
+ignored tests. Doctests passed 1/28; formatting, Clippy and rustdoc passed.
+Exact-source limits and the hosted-CI requirement are in [verification](verification.md).
+Dependencies and live-entry refusal are unchanged.
+
+This closes the fixed two-import composition gap, while operational rotation
+and protected custody remain unavailable. The next implementation target needs
+the concrete [operator decisions](operator-decisions.md): host and retained
+agent access, recipient/install closure, custody/unlock constraints, independent
+human client and independent recovery/anchor. Design answers do not authorize
+provisioning, access/security changes, deployment or real credential entry.
+The stopped independent review remains unresolved.
+
+## Fixed application-slot checkpoint (10 October 2026)
+
+The optional [application-slot drill](application-slot.md) now installs the actual
+imported public canary into a fixed file using directory-relative handles.
+A signed intent precedes staging; file sync, replacement and directory sync
+precede the signed installation receipt. Import, exact approval and receipt
+binding use distinct adapter/output contracts 2/2, preventing legacy encrypted
+acceptance from being counted as application installation.
+
+All 328 library tests and eight enabled CLI acceptance tests pass locally,
+including actual recipient exits at five installation boundaries and separately
+scoped two-version replacement. Default/vault-only refusal passed three tests
+each. Final default/all-feature aggregates have 163/449 passes plus the unchanged
+14 denied listener cases, with zero ignored tests; 1/28 doctests and all quality
+checks passed. Integration found and fixed an invalid-version arithmetic panic
+without relaxing its existing regression. The exact published head then passed
+all 177 default and 463 all-feature tests, including every listener case,
+1/28 doctests and all quality checks. Exact-source details are in
+[verification](verification.md).
+
+This is actual dummy file installation on an UNISOLATED development host.
+Read-only recovery distinguishes observed file version from completed receipt
+generation and preserves consumed uncertainty without replay. Protected input
+and custody, genuine human control, immutable isolated application identity,
+external recovery anchor, operational time/lifecycle/admission, live GitHub
+integration and assurance remain open. Real-key entry still refuses.
+
+## Broker process service checkpoint (10 October 2026)
+
+The [fixed-canary process service](process-service.md) now drives actual bounded
+TLS socket I/O between simulated clients and a separate broker child. A common
+supervisor owns and reaps that broker and its fixed recipient child. Runtime
+broker custody excludes client signing/TLS private keys and recipient private
+keys. Actual imported ciphertext, exact approval, reservation, duplicate reuse,
+cold authentication and durable revoke follow the existing policy engine.
+
+Integrated local validation passed all 317 library tests, seven feature-enabled
+and two default CLI acceptance tests, 1/28 doctests, formatting, unrestricted
+Clippy and rustdoc. Default/all-feature aggregates produced 160/430 passes plus
+the unchanged 14 denied listener cases, with zero ignored tests. Its later
+exact-head hosted CI passed all 174 default and 444 all-feature cases, including
+the listener suite. The [verification record](verification.md) describes both actual
+process reply-loss cases, child cleanup and their limits. Dependencies are
+unchanged.
+
+This remains UNISOLATED and dummy-only: same UID/control plane, simulated human
+approval, disposable bootstrap custody and fixed fixture journal time. An
+operational listener/admission policy, trusted time, protected input/custody,
+independent human client, immutable application slot, external rollback anchor,
+lifecycle/audit/provider adapters and required assurance remain open. All live
+readiness gates remain false.
+
 ## Composed canary checkpoint (9 October 2026)
 
 The [composed canary](composed-canary-flow.md) consumes the actual bounded
@@ -14,8 +92,9 @@ and two-version store remain available.
 Local integrated validation passed 300 library tests, 6 all-feature and 2
 default CLI acceptance tests, 1/27 doctests, formatting, Clippy and rustdoc.
 Full default/all-feature runs produced 158/406 passes plus the same 14 denied
-listener-dependent cases and zero ignored tests. Exact-head hosted CI is required for each published candidate and recorded on
-its draft PR; see [verification](verification.md). No dependencies changed.
+listener-dependent cases and zero ignored tests. Its later exact-head hosted
+CI passed all 172 default and 420 all-feature tests, including the listener
+cases; see [verification](verification.md). No dependencies changed.
 
 This is a fixed dummy-input flow. Its TLS peers and simulated human signers are
 controlled by the parent fixture; its child shares the development UID and

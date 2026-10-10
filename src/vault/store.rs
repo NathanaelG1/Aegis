@@ -191,6 +191,55 @@ struct Record {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     import_metadata_digest: Option<String>,
 }
+/// Persisted purpose binding. Legacy fixtures remain byte-compatible when absent.
+#[derive(Clone, Copy, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum ReceiptContract {
+    #[default]
+    Acceptance,
+    #[cfg(feature = "application-slot")]
+    Installation,
+}
+impl ReceiptContract {
+    fn is_acceptance(&self) -> bool {
+        *self == Self::Acceptance
+    }
+    pub(super) fn profile(self, version: u64) -> DeliveryProfile {
+        match self {
+            Self::Acceptance => DeliveryProfile::fixture(version),
+            #[cfg(feature = "application-slot")]
+            Self::Installation => DeliveryProfile::installation(version),
+        }
+    }
+    pub(super) fn capsule_kind(self) -> &'static str {
+        match self {
+            Self::Acceptance => "aegis.synthetic.recipient.capsule.v1",
+            #[cfg(feature = "application-slot")]
+            Self::Installation => "aegis.synthetic.application-slot.capsule.v1",
+        }
+    }
+    pub(super) fn verify_ack(
+        self,
+        signed: &Signed,
+        verifier: &Verifier,
+        vault: &str,
+        id: &RequestId,
+        profile: &DeliveryProfile,
+        digest: &str,
+    ) -> Result<Ack, ErrorCode> {
+        match self {
+            Self::Acceptance => {
+                let ack: Ack = verifier.verify(signed)?;
+                validate_ack(&ack, vault, id, profile, digest)?;
+                Ok(ack)
+            }
+            #[cfg(feature = "application-slot")]
+            Self::Installation => super::application_slot::verify_installation_receipt(
+                signed, verifier, vault, id, profile, digest,
+            ),
+        }
+    }
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Manifest {
@@ -201,15 +250,17 @@ struct Manifest {
     acl: Vec<AclEntry>,
     records: Vec<Record>,
     recipient_key: String,
+    #[serde(default, skip_serializing_if = "ReceiptContract::is_acceptance")]
+    receipt_contract: ReceiptContract,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Payload {
+pub(super) struct Payload {
     schema: u16,
     kind: String,
     vault_id: String,
     reference: SecretReference,
-    value: String,
+    pub(super) value: String,
     value_digest: String,
 }
 impl Drop for Payload {
@@ -232,13 +283,13 @@ pub(super) struct Ack {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Capsule {
+pub(super) struct Capsule {
     schema: u16,
     kind: String,
     vault_id: String,
-    delivery_id: RequestId,
-    profile: DeliveryProfile,
-    expected_generation: u64,
+    pub(super) delivery_id: RequestId,
+    pub(super) profile: DeliveryProfile,
+    pub(super) expected_generation: u64,
     ciphertext: String,
 }
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -340,6 +391,7 @@ impl History {
         frame: &Frame,
         manifest_digest: &str,
         kit: &BrokerMaterial,
+        contract: ReceiptContract,
     ) -> Result<(), ErrorCode> {
         let bad = || ErrorCode::PersistenceUnavailable;
         if frame.schema != 1
@@ -457,9 +509,9 @@ impl History {
                             return Err(bad());
                         }
                         let signed = Signed::parse(ack.as_ref().ok_or_else(bad)?.as_bytes())?;
-                        let receipt: Ack = kit.receipt.verify(&signed)?;
-                        validate_ack(
-                            &receipt,
+                        contract.verify_ack(
+                            &signed,
+                            &kit.receipt,
                             &kit.vault_id,
                             &op.review.request_id,
                             &op.review.profile,
@@ -583,6 +635,30 @@ impl Store {
         kit: Arc<BrokerMaterial>,
         acl: Vec<AclEntry>,
     ) -> Result<Arc<Self>, ErrorCode> {
+        Self::create_with_acl_contract(path, kit, acl, ReceiptContract::Acceptance)
+    }
+    #[cfg(all(test, feature = "application-slot"))]
+    pub(super) fn create_installation(
+        path: &Path,
+        kit: Arc<BrokerMaterial>,
+    ) -> Result<Arc<Self>, ErrorCode> {
+        let contract = ReceiptContract::Installation;
+        let acl = [1, 2]
+            .into_iter()
+            .map(|v| AclEntry {
+                principal: PrincipalId::new(AGENT).expect("constant"),
+                profile: contract.profile(v),
+                max_uses: BUDGET,
+            })
+            .collect();
+        Self::create_with_acl_contract(path, kit, acl, contract)
+    }
+    fn create_with_acl_contract(
+        path: &Path,
+        kit: Arc<BrokerMaterial>,
+        acl: Vec<AclEntry>,
+        contract: ReceiptContract,
+    ) -> Result<Arc<Self>, ErrorCode> {
         if kit.directory.join("anchor.jws").exists() || kit.directory.join("anchor.next").exists() {
             return Err(ErrorCode::PersistenceUnavailable);
         }
@@ -609,19 +685,27 @@ impl Store {
                 import_metadata_digest: None,
             });
         }
-        Self::initialize(path, kit, acl, records)
+        Self::initialize(path, kit, acl, records, contract)
     }
-    /// The sole composed constructor consumes one committed, bounded import.
+    /// The legacy composed constructor consumes one committed, bounded import.
     /// It never calls `canary` or the standalone record synthesizer.
     pub(super) fn create_imported(
         path: &Path,
         kit: Arc<BrokerMaterial>,
         imported: super::entry::protected_entry::ImportedCanary,
     ) -> Result<Arc<Self>, ErrorCode> {
+        Self::create_imported_contract(path, kit, imported, ReceiptContract::Acceptance)
+    }
+    pub(super) fn create_imported_contract(
+        path: &Path,
+        kit: Arc<BrokerMaterial>,
+        imported: super::entry::protected_entry::ImportedCanary,
+        contract: ReceiptContract,
+    ) -> Result<Arc<Self>, ErrorCode> {
         if kit.directory.join("anchor.jws").exists() || kit.directory.join("anchor.next").exists() {
             return Err(ErrorCode::PersistenceUnavailable);
         }
-        let (ciphertext, metadata_digest) = imported.consume(&kit)?;
+        let (ciphertext, metadata_digest) = imported.consume_contract(&kit, contract)?;
         new_directory(path)?;
         write_new(&path.join("secret-1.age"), &ciphertext)?;
         let records = vec![Record {
@@ -631,16 +715,51 @@ impl Store {
         }];
         let acl = vec![AclEntry {
             principal: PrincipalId::new(AGENT).expect("constant"),
-            profile: DeliveryProfile::fixture(1),
+            profile: contract.profile(1),
             max_uses: BUDGET,
         }];
-        Self::initialize(path, kit, acl, records)
+        Self::initialize(path, kit, acl, records, contract)
+    }
+    /// Consume both reviewed imports before publishing the bounded rotation store.
+    /// Stored records are the committed input ciphertexts, without regeneration.
+    #[cfg(feature = "application-slot")]
+    pub(super) fn create_imported_rotation(
+        path: &Path,
+        kit: Arc<BrokerMaterial>,
+        imported: [super::entry::protected_entry::ImportedCanary; 2],
+    ) -> Result<Arc<Self>, ErrorCode> {
+        if kit.directory.join("anchor.jws").exists() || kit.directory.join("anchor.next").exists() {
+            return Err(ErrorCode::PersistenceUnavailable);
+        }
+        let consumed =
+            super::entry::protected_entry::ImportedCanary::consume_rotation(imported, &kit)?;
+        if consumed[0].1 == consumed[1].1 {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        new_directory(path)?;
+        let mut records = Vec::with_capacity(2);
+        let mut acl = Vec::with_capacity(2);
+        for (version, (ciphertext, metadata_digest)) in [1, 2].into_iter().zip(consumed) {
+            write_new(&path.join(format!("secret-{version}.age")), &ciphertext)?;
+            records.push(Record {
+                reference: DeliveryParameters::fixture(version).secret,
+                ciphertext_digest: crypto::hash(&ciphertext),
+                import_metadata_digest: Some(metadata_digest),
+            });
+            acl.push(AclEntry {
+                principal: PrincipalId::new(AGENT).expect("constant"),
+                profile: ReceiptContract::Installation.profile(version),
+                max_uses: BUDGET,
+            });
+        }
+        Self::initialize(path, kit, acl, records, ReceiptContract::Installation)
     }
     fn initialize(
         path: &Path,
         kit: Arc<BrokerMaterial>,
         acl: Vec<AclEntry>,
         records: Vec<Record>,
+        receipt_contract: ReceiptContract,
     ) -> Result<Arc<Self>, ErrorCode> {
         let manifest = Manifest {
             schema: 1,
@@ -650,6 +769,7 @@ impl Store {
             acl,
             records,
             recipient_key: crypto::hash(kit.recipient.to_string().as_bytes()),
+            receipt_contract,
         };
         validate_manifest(&manifest, &kit)?;
         let signed = kit.writer.sign(&manifest)?;
@@ -715,7 +835,7 @@ impl Store {
             .read_to_end(&mut data)
             .map_err(|_| ErrorCode::PersistenceUnavailable)?;
         let manifest_digest = crypto::hash(signed.bytes());
-        let history = replay(&data, &manifest_digest, &kit)?;
+        let history = replay(&data, &manifest_digest, &kit, manifest.receipt_contract)?;
         check_anchor(&kit, &history)?;
         let store = Arc::new(Self {
             directory: path.into(),
@@ -735,26 +855,64 @@ impl Store {
         });
         Ok(store)
     }
+    pub(super) fn receipt_contract(&self) -> ReceiptContract {
+        self.manifest.receipt_contract
+    }
     pub(super) fn check_imported_record(&self, input: &Path) -> Result<(), ErrorCode> {
         let [record] = self.manifest.records.as_slice() else {
             return Err(ErrorCode::PolicyChanged);
         };
+        self.check_imported_version(record, input).map(|_| ())
+    }
+    #[cfg(feature = "application-slot")]
+    pub(super) fn check_imported_rotation(
+        &self,
+        first_input: &Path,
+        second_input: &Path,
+    ) -> Result<(), ErrorCode> {
+        let [first, second] = self.manifest.records.as_slice() else {
+            return Err(ErrorCode::PolicyChanged);
+        };
+        if self.manifest.receipt_contract != ReceiptContract::Installation
+            || first_input == second_input
+            || first.import_metadata_digest == second.import_metadata_digest
+        {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        let first_instance = self.check_imported_version(first, first_input)?;
+        let second_instance = self.check_imported_version(second, second_input)?;
+        if first_instance == second_instance {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        Ok(())
+    }
+    fn check_imported_version(&self, record: &Record, input: &Path) -> Result<[u8; 16], ErrorCode> {
         let metadata_digest = record
             .import_metadata_digest
             .as_ref()
             .ok_or(ErrorCode::PolicyChanged)?;
         let original = super::entry::protected_entry::committed_ciphertext(input)?;
-        let stored = read_file(&self.directory.join("secret-1.age"), crypto::MAX_DOCUMENT)?;
+        let stored = read_file(
+            &self
+                .directory
+                .join(format!("secret-{}.age", record.reference.version)),
+            crypto::MAX_DOCUMENT,
+        )?;
         if original != stored || crypto::hash(&stored) != record.ciphertext_digest {
             return Err(ErrorCode::PolicyChanged);
         }
         let clear = self.kit.storage.decrypt(&stored)?;
-        super::entry::protected_entry::decode_imported_value(
+        let (_, instance, destination) = super::entry::protected_entry::decode_imported_evidence(
             &clear.0,
             metadata_digest,
             &record.reference,
+            &self.kit,
+            self.manifest.receipt_contract,
         )?;
-        Ok(())
+        if destination != input {
+            return Err(ErrorCode::PolicyChanged);
+        }
+        Ok(instance)
     }
     fn check_storage_view(&self, w: &mut Writer) -> Result<(), ErrorCode> {
         safe_directory(&self.directory)?;
@@ -823,7 +981,12 @@ impl Store {
                 .take((MAX_LOG + 1) as u64)
                 .read_to_end(&mut bytes)
                 .map_err(|_| ErrorCode::PersistenceUnavailable)?;
-            let current = replay(&bytes, &self.manifest_digest, &self.kit)?;
+            let current = replay(
+                &bytes,
+                &self.manifest_digest,
+                &self.kit,
+                self.manifest.receipt_contract,
+            )?;
             if current.sequence != w.history.sequence || current.head != w.history.head {
                 return Err(ErrorCode::PersistenceUnavailable);
             }
@@ -849,7 +1012,12 @@ impl Store {
             event,
         };
         let mut next = w.history.clone();
-        next.apply(&frame, &self.manifest_digest, &self.kit)?;
+        next.apply(
+            &frame,
+            &self.manifest_digest,
+            &self.kit,
+            self.manifest.receipt_contract,
+        )?;
         let signed = self.kit.writer.sign(&frame)?;
         let mut bytes = signed.bytes().to_vec();
         bytes.push(b'\n');
@@ -1133,8 +1301,23 @@ fn validate_manifest(m: &Manifest, kit: &BrokerMaterial) -> Result<(), ErrorCode
     // A single record is accepted only with authenticated import provenance and
     // the exact one-version ACL; deleting a standalone record cannot opt in.
     let imported = matches!(m.records.as_slice(), [r] if r.import_metadata_digest.as_ref().is_some_and(|d| d.len() == 43));
+    #[cfg(feature = "application-slot")]
+    let rotation = m.receipt_contract == ReceiptContract::Installation
+        && matches!(m.records.as_slice(), [first, second]
+            if first.import_metadata_digest.as_ref().is_some_and(|d| d.len() == 43)
+                && second.import_metadata_digest.as_ref().is_some_and(|d| d.len() == 43)
+                && first.import_metadata_digest != second.import_metadata_digest);
+    #[cfg(not(feature = "application-slot"))]
+    let rotation = false;
     if imported {
-        if m.acl.len() != 1 || m.acl[0].profile != DeliveryProfile::fixture(1) {
+        if m.acl.len() != 1 || m.acl[0].profile != m.receipt_contract.profile(1) {
+            return Err(ErrorCode::PersistenceUnavailable);
+        }
+    } else if rotation {
+        if m.acl.len() != 2
+            || m.acl[0].profile != m.receipt_contract.profile(1)
+            || m.acl[1].profile != m.receipt_contract.profile(2)
+        {
             return Err(ErrorCode::PersistenceUnavailable);
         }
     } else if m.records.len() != 2 || m.records.iter().any(|r| r.import_metadata_digest.is_some()) {
@@ -1148,13 +1331,22 @@ fn validate_manifest(m: &Manifest, kit: &BrokerMaterial) -> Result<(), ErrorCode
         }
     }
     for a in &m.acl {
-        if a.principal.as_str() != AGENT || a.profile.validate().is_err() || a.max_uses != BUDGET {
+        if a.principal.as_str() != AGENT
+            || a.profile.validate().is_err()
+            || a.profile != m.receipt_contract.profile(a.profile.secret.version)
+            || a.max_uses != BUDGET
+        {
             return Err(ErrorCode::PersistenceUnavailable);
         }
     }
     Ok(())
 }
-fn replay(bytes: &[u8], manifest: &str, kit: &BrokerMaterial) -> Result<History, ErrorCode> {
+fn replay(
+    bytes: &[u8],
+    manifest: &str,
+    kit: &BrokerMaterial,
+    contract: ReceiptContract,
+) -> Result<History, ErrorCode> {
     if bytes.is_empty() || bytes.len() > MAX_LOG || bytes.last() != Some(&b'\n') {
         return Err(ErrorCode::PersistenceUnavailable);
     }
@@ -1162,7 +1354,7 @@ fn replay(bytes: &[u8], manifest: &str, kit: &BrokerMaterial) -> Result<History,
     for line in bytes.split_inclusive(|b| *b == b'\n') {
         let signed = Signed::parse(&line[..line.len() - 1])?;
         let frame: Frame = kit.writer.verifier().verify(&signed)?;
-        h.apply(&frame, manifest, kit)?;
+        h.apply(&frame, manifest, kit, contract)?;
         h.head = crypto::hash(signed.bytes());
     }
     Ok(h)
@@ -1686,11 +1878,19 @@ fn decode_capsule(
     kit: &RecipientMaterial,
     signed: &Signed,
 ) -> Result<(Capsule, Payload), ErrorCode> {
+    decode_capsule_for(kit, signed, ReceiptContract::Acceptance)
+}
+pub(super) fn decode_capsule_for(
+    kit: &RecipientMaterial,
+    signed: &Signed,
+    contract: ReceiptContract,
+) -> Result<(Capsule, Payload), ErrorCode> {
     let content: Capsule = kit.writer.verify(signed)?;
     if content.schema != 1
-        || content.kind != "aegis.synthetic.recipient.capsule.v1"
+        || content.kind != contract.capsule_kind()
         || content.vault_id != kit.vault_id
         || content.profile.validate().is_err()
+        || content.profile != contract.profile(content.profile.secret.version)
         || content.expected_generation != content.profile.secret.version - 1
     {
         return Err(ErrorCode::InvalidRequest);
@@ -1838,10 +2038,12 @@ impl Store {
             }
             let mut clear = self.kit.storage.decrypt(&ciphertext)?;
             if let Some(metadata_digest) = &record.import_metadata_digest {
-                let imported = super::entry::protected_entry::decode_imported_value(
+                let imported = super::entry::protected_entry::decode_imported_for(
                     &clear.0,
                     metadata_digest,
                     &profile.secret,
+                    &self.kit,
+                    self.manifest.receipt_contract,
                 )?;
                 let payload = Payload {
                     schema: 1,
@@ -1863,7 +2065,7 @@ impl Store {
             let encrypted = crypto::encrypt(&clear.0, &self.kit.recipient)?;
             self.kit.writer.sign(&Capsule {
                 schema: 1,
-                kind: "aegis.synthetic.recipient.capsule.v1".into(),
+                kind: self.manifest.receipt_contract.capsule_kind().into(),
                 vault_id: self.kit.vault_id.clone(),
                 delivery_id: id.clone(),
                 profile: profile.clone(),
@@ -1901,10 +2103,14 @@ impl Store {
             .unwrap_or(RecipientOutcome::Unknown);
         let (terminal, ack, result) = match outcome {
             RecipientOutcome::Acknowledged(signed) => {
-                let valid = self.kit.receipt.verify::<Ack>(&signed).and_then(|ack| {
-                    validate_ack(&ack, &self.kit.vault_id, id, profile, &capsule_digest)?;
-                    Ok(ack)
-                });
+                let valid = self.manifest.receipt_contract.verify_ack(
+                    &signed,
+                    &self.kit.receipt,
+                    &self.kit.vault_id,
+                    id,
+                    profile,
+                    &capsule_digest,
+                );
                 match valid {
                     Ok(a) => (
                         Outcome::Delivered,
@@ -1965,5 +2171,87 @@ impl RecipientPause {
     pub fn release(&self) {
         *self.released.lock().unwrap() = true;
         self.wake.notify_all();
+    }
+}
+
+#[cfg(all(test, feature = "application-slot"))]
+mod rotation_import_tests {
+    use super::*;
+    use crate::vault::entry::protected_entry;
+
+    #[test]
+    fn rotation_check_rejects_shared_ceremony_with_individually_valid_frozen_records() {
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = std::env::temp_dir().join(format!(
+            "aegis-import-pair-{}",
+            crypto::random_id().unwrap()
+        ));
+        new_directory(&root).unwrap();
+        let root = Cleanup(root.canonicalize().unwrap());
+        let kit = Kit::create(&root.0.join("kit")).unwrap();
+        let material = kit.broker_material();
+        let first_path = root.0.join("one");
+        let second_path = root.0.join("two");
+        let imported = protected_entry::import_delivery_rotation_canaries(
+            &first_path,
+            &second_path,
+            &material,
+        )
+        .unwrap();
+        let mut store =
+            Store::create_imported_rotation(&root.0.join("vault"), material.clone(), imported)
+                .unwrap();
+        store
+            .check_imported_rotation(&first_path, &second_path)
+            .unwrap();
+        let first_instance = store
+            .check_imported_version(&store.manifest.records[0], &first_path)
+            .unwrap();
+        let original = kit
+            .storage
+            .decrypt(&protected_entry::committed_ciphertext(&second_path).unwrap())
+            .unwrap();
+        let length = u32::from_be_bytes(original.0[8..12].try_into().unwrap()) as usize;
+        let mut metadata: serde_json::Value =
+            serde_json::from_slice(&original.0[12..12 + length]).unwrap();
+        let duplicate = serde_json::to_value(first_instance).unwrap();
+        metadata["entry"]["instance"] = duplicate.clone();
+        for receipt in metadata["entry"]["receipts"].as_array_mut().unwrap() {
+            receipt["instance"] = duplicate.clone();
+        }
+        let metadata = serde_json::to_vec(&metadata).unwrap();
+        let digest = crypto::hash(&metadata);
+        let mut clear = PrivateBytes(Vec::new());
+        clear.0.extend_from_slice(&original.0[..8]);
+        clear
+            .0
+            .extend_from_slice(&(metadata.len() as u32).to_be_bytes());
+        clear.0.extend_from_slice(&metadata);
+        clear.0.extend_from_slice(&original.0[12 + length..]);
+        protected_entry::decode_imported_for(
+            &clear.0,
+            &digest,
+            &DeliveryParameters::fixture(2).secret,
+            &material,
+            ReceiptContract::Installation,
+        )
+        .unwrap();
+        let ciphertext = crypto::encrypt(&clear.0, &kit.storage.recipient()).unwrap();
+        fs::write(second_path.join("record.age"), &ciphertext).unwrap();
+        fs::write(store.directory.join("secret-2.age"), &ciphertext).unwrap();
+        // Model a matching authenticated record, so pair rejection must come from
+        // the cross-record ceremony check, not a ciphertext or metadata mismatch.
+        let state = Arc::get_mut(&mut store).unwrap();
+        state.manifest.records[1].ciphertext_digest = crypto::hash(&ciphertext);
+        state.manifest.records[1].import_metadata_digest = Some(digest);
+        assert_eq!(
+            store.check_imported_rotation(&first_path, &second_path),
+            Err(ErrorCode::PolicyChanged)
+        );
     }
 }

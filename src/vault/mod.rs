@@ -12,6 +12,10 @@
 //! ```compile_fail
 //! use aegis::vault::crypto::PrivateBytes;
 //! ```
+#[cfg(feature = "application-slot")]
+pub mod application_rotation;
+#[cfg(feature = "application-slot")]
+pub mod application_slot;
 mod auth;
 pub mod composed;
 mod crypto;
@@ -20,6 +24,7 @@ pub mod deployment;
 pub mod entry;
 mod model;
 pub mod process_recipient;
+pub mod process_service;
 pub mod protocol;
 pub mod recipient_adapter;
 mod runtime;

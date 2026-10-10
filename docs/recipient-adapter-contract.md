@@ -2,7 +2,7 @@
 
 This is a standalone, in-memory contract exercise for a future protected recipient adapter. It reuses the existing optional `vault-spike` age encryption, signed documents and fixed delivery types. It does not replace or integrate with `vault::runtime::Adapter`, its durable store, authenticated sessions, human approval or protocol handlers. It adds no dependencies, network transport, filesystem installation, provider calls, arbitrary secret entry or deployment activation. `require_live_deployment()` still unconditionally refuses.
 
-The only intended public entry point is `run_synthetic_recipient_adapter_drill()`, which takes no arguments and returns a closed `SyntheticRecipientAdapterReport`. It generates disposable fixture identities, installs the two built-in canaries in sequence and revokes future fixture delivery. `Adapter`, `Transport`, `Enrollment`, `DummySink`, capsule and receipt types remain private. The drill is a synthetic prerequisite, not a production integration milestone.
+The only intended public entry point is `run_synthetic_recipient_adapter_drill()`, which takes no arguments and returns a closed `SyntheticRecipientAdapterReport`. It generates disposable fixture identities, advances the in-memory sink through two built-in canaries in sequence and revokes future fixture delivery. No application file is installed. `Adapter`, `Transport`, `Enrollment`, `DummySink`, capsule and receipt types remain private. The drill is a synthetic prerequisite, not a production integration milestone.
 
 ## Trust and binding
 

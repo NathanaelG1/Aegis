@@ -182,9 +182,10 @@ interface.
 Starting source: `0ab8a1ac9a385ed7d9fff4b6f5c6efa0727e3303`, the separate-mechanism
 checkpoint. The integrated runtime/tests are
 `cbcfa1ea110bd62ec6ad17a5de5066fa294ea407`; subsequent documentation does not
-change that tested code. The [verification record](verification.md) gives
-commands, counts, platform limits and prior CI provenance. The new draft PR
-records the exact published head and its hosted CI result.
+change that tested code. Published head `85516f171a89d325ecb98419aa2a43cf74c02c96`
+in [PR #3](https://github.com/NathanaelG1/Aegis/pull/3) has the same final tree
+as local `4f0b692`. The [verification record](verification.md) gives commands,
+counts, platform limits and exact hosted provenance.
 
 | Evidence | Current state |
 | --- | --- |
@@ -195,7 +196,7 @@ records the exact published head and its hosted CI result.
 | Cold state and missing/corrupt artifacts | Fresh-process inspect passed without file changes or restored sessions; missing/corrupt input/store ciphertext refused without mutation |
 | Failure and uncertainty | Import failures retain their one-shot consumption; invalid stored bytes detected before reservation cause no use/handoff. Imported-record acknowledgement loss uses an in-process recipient fault and retains consumed uncertainty with cold `ReconciliationRequired`; full TLS/child fault injection remains untested |
 | Aggregate tests and quality | 300 library tests, 1/27 doctests and quality checks passed. Full local default/all-feature runs: 158/406 passes plus the unchanged 14 restricted listener failures each, zero ignored |
-| Hosted Linux CI | Reported for the exact published SHA on the accompanying draft PR; this ledger records pre-publication local checks and does not substitute earlier passes |
+| Hosted Linux CI | Exact head `85516f1` passed [run 38006465796](https://github.com/NathanaelG1/Aegis/actions/runs/38006465796): 172 default and 420 all-feature tests, all listener cases, 1/27 doctests and quality checks; zero failed or ignored |
 | Operator-owned deployment and independent assurance | Not established; live use remains NO-GO |
 
 Acceptance commands are:
