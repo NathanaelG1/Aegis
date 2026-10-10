@@ -6,9 +6,12 @@ Local tested runtime and acceptance-test source:
 `a36dad47088234492c6659418ca83aa71b7f0d01`. The increment starts from verified
 PR #4 head `210a1b32d2986ce8d6673baeafcfe69399d0adb8`, tree
 `fa4d89c07531d3333b36cbb8b52f3813d1e4362e` (local equivalent `7e64b81`).
-It is stacked on the process-service branch. This record captures local
-validation before publication; exact-head hosted CI must be checked separately
-on the associated draft PR. Historical green runs do not cover this source.
+It is stacked on the process-service branch. Its published head is
+`e6e973ec8cccd2c8127d91af160c1a6d48bca322` in
+[draft PR #5](https://github.com/NathanaelG1/Aegis/pull/5), tree
+`40c7d3f276847fc5a50a92002e6a3a77c2baa5e1`, identical to local final `de9bf78`.
+The API-created commits preserve PR #4 ancestry and map to local commits by
+identical tree hashes.
 
 Environment: Debian 13.6 Linux x86_64 development workspace, official Rust/Cargo
 1.96.1. Cargo.lock SHA-256 is
@@ -63,6 +66,16 @@ for other configurations. No toolchain, CI permission or deployment change occur
 - Default/all-feature doctests passed 1/28. Formatting, unrestricted
   all-target/all-feature Clippy and all-feature rustdoc with warnings denied
   passed. Focused default and vault-only Clippy also passed before integration.
+
+The exact published head subsequently passed
+[hosted CI run 38011394468](https://github.com/NathanaelG1/Aegis/actions/runs/38011394468)
+on Ubuntu 24.04.5 LTS x86_64, runner image `20261004.327.1`, Rust/Cargo 1.96.1.
+All 177 default and 463 all-feature tests passed, including all 328 library
+tests and all 21 Unix interface cases in both configurations. No tests failed
+or were ignored. Default/all-feature doctests passed 1/28; formatting,
+unrestricted Clippy and rustdoc passed. The log verifies the exact source and
+lockfile hash. This covers the one-import slot composition and focused
+in-process replacement; later composed rotation needs its own evidence.
 
 The actual application file intentionally contains a public canary. Every
 process, file and disposable key remains under the development UID/control

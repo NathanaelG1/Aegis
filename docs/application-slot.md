@@ -1,6 +1,6 @@
 # Fixed-canary application-file slot
 
-**Implemented canary-only mechanism, 10 October 2026. Focused functional checks
+**Implemented canary-only mechanism, 10 October 2026. Exact-head functional CI
 passed; live use remains NO-GO.** [ADR 0021](adr/0021-fixed-application-slot.md)
 defines this bounded extension of the [process-owned broker service](process-service.md).
 The implementation installs the actual imported public canary into one fixed
@@ -208,6 +208,18 @@ failure matrix. These tests neither perform nor replace adversarial security
 review, host-isolation testing or durability testing on an operator filesystem.
 
 ## Evidence and remaining operational work
+
+Published one-import slot head `e6e973ec8cccd2c8127d91af160c1a6d48bca322` in
+[draft PR #5](https://github.com/NathanaelG1/Aegis/pull/5), tree
+`40c7d3f276847fc5a50a92002e6a3a77c2baa5e1` (local `de9bf78`), passed
+[exact-head hosted CI](https://github.com/NathanaelG1/Aegis/actions/runs/38011394468).
+On Ubuntu 24.04.5 LTS x86_64 and Rust 1.96.1, all 177 default and 463 all-feature
+tests passed, including 328 library tests and all 21 Unix interface tests in
+both modes. Doctests passed 1/28; formatting, Clippy and rustdoc passed, with
+zero failed or ignored tests. The [verification record](verification.md)
+also retains local restrictions and the fixed regression. These results cover
+one imported version in the full process flow and the separately scoped
+in-process replacement test, not a general rotation service.
 
 The historical process-service checkpoint is PR #4, open draft stacked on
 PR #3, at head `210a1b32d2986ce8d6673baeafcfe69399d0adb8`, tree

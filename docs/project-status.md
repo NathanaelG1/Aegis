@@ -17,8 +17,10 @@ scoped two-version replacement. Default/vault-only refusal passed three tests
 each. Final default/all-feature aggregates have 163/449 passes plus the unchanged
 14 denied listener cases, with zero ignored tests; 1/28 doctests and all quality
 checks passed. Integration found and fixed an invalid-version arithmetic panic
-without relaxing its existing regression. Exact-source details and the later
-hosted-CI requirement are in [verification](verification.md).
+without relaxing its existing regression. The exact published head then passed
+all 177 default and 463 all-feature tests, including every listener case,
+1/28 doctests and all quality checks. Exact-source details are in
+[verification](verification.md).
 
 This is actual dummy file installation on an UNISOLATED development host.
 Read-only recovery distinguishes observed file version from completed receipt
