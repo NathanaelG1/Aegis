@@ -309,6 +309,26 @@ pub(super) struct ProcessRecipient {
     session: Mutex<Session>,
 }
 impl ProcessRecipient {
+    // The fixed service supervisor owns/reaps the recipient Child. The broker
+    // receives only this inherited socket and its existing public verification
+    // material; it never opens recipient-private role files.
+    pub(super) fn from_supervised_stream(
+        material: Arc<BrokerMaterial>,
+        stream: UnixStream,
+    ) -> Result<Arc<Self>, ErrorCode> {
+        let recipient = Arc::new(Self {
+            material,
+            session: Mutex::new(Session {
+                child: None,
+                stream,
+                failed: false,
+                exchanges: 0,
+                timeout: EXCHANGE_TIMEOUT,
+            }),
+        });
+        recipient.snapshot()?;
+        Ok(recipient)
+    }
     pub(super) fn start(
         material: Arc<BrokerMaterial>,
         custody: &Path,
@@ -452,6 +472,45 @@ fn serve(material: Arc<RecipientMaterial>, recipient: Arc<Recipient>) -> Result<
         let request: Request =
             serde_json::from_slice(&bytes.0).map_err(|_| ErrorCode::InvalidRequest)?;
         let response = respond(&material, &recipient, request)?;
+        write_frame(&mut output, response.bytes())?;
+    }
+    Ok(())
+}
+
+pub(super) fn supervised_child(
+    custody: &Path,
+    state: &Path,
+    create: bool,
+) -> Result<(), ErrorCode> {
+    let material = custody::open_recipient_role(custody)?;
+    let recipient = if create {
+        Recipient::create(state, material.clone())?
+    } else {
+        Recipient::open(state, material.clone())?
+    };
+    serve(material, recipient)
+}
+
+// Actual-process interruption fixture: acceptance is durable, but the recipient
+// exits before acknowledging it. Absent from non-test builds and public APIs.
+#[cfg(test)]
+pub(super) fn supervised_child_discard_delivery_reply(
+    custody: &Path,
+    state: &Path,
+) -> Result<(), ErrorCode> {
+    let material = custody::open_recipient_role(custody)?;
+    let recipient = Recipient::create(state, material.clone())?;
+    let mut input = std::io::stdin().lock();
+    let mut output = std::io::stdout().lock();
+    for _ in 0..MAX_EXCHANGES {
+        let bytes = read_frame(&mut input)?;
+        let request: Request =
+            serde_json::from_slice(&bytes.0).map_err(|_| ErrorCode::InvalidRequest)?;
+        let delivery = matches!(request, Request::Deliver { .. });
+        let response = respond(&material, &recipient, request)?;
+        if delivery {
+            return Err(ErrorCode::BrokerUnavailable);
+        }
         write_frame(&mut output, response.bytes())?;
     }
     Ok(())
