@@ -2,6 +2,8 @@
 
 ## Status and intended product
 
+**October 17 extension:** the opt-in Unix `sprite-demo` feature adds an owner-controlled fake-secret HTTP service with separate owner/agent credentials and an HTTP-backed Python stdio MCP client. It reuses the operation core, requires exact owner review, pins a volatile broker instance, and emits bounded audit data. See [the implementation and deployment contract](sprite-demo.md) and [ADR 0019](adr/0019-owner-controlled-sprite-demo.md). The original local-mode descriptions below remain applicable to their respective commands. The HTTP experiment accepts only generated fake fixtures; operational storage and protected application delivery remain unavailable.
+
 Aegis is an experimental local capability broker; protected agent-blind application delivery is required but not yet implemented or verified. The current checkpoint implements an in-memory synthetic Rust core, a Unix foreground workflow with separate terminal control and agent socket, and a thin stdio MCP client. The portable operational vault, protected human-presence mechanism, live provider connection and application-delivery enforcement remain subsequent gates. An optional age module separately demonstrates saved-fixture recovery without becoming broker authority.
 
 For the implemented operation path, the agent requests an operation, not a credential. A human-controlled authority delegates a fixed resource and bounded effects. The broker resolves the current protected policy, reserves authority, invokes a reviewed adapter, validates its response, and returns an explicit projection. For the required future application-configuration path, the agent proposes secret references and non-secret intent; the broker delivers plaintext directly to an enrolled isolated recipient after separately authenticated human approval, with only safe status returned to the agent.
@@ -33,6 +35,7 @@ The Rust embedding host can hold both handles. Only the agent handle belongs on 
 | `github` | Fixed synthetic personal GitHub App adapter exercise, private token/signing/transport types, safe reports | A live key-input path, parallel production policy engine or credential helper |
 | `signing` (optional) | Disposable-key sign-only source, strict RS256 verification and private one-shot approval-bound synthetic composition | An operational vault, exported signer/JWT, agent tool or live GitHub path |
 | `storage` (optional) | Fixed synthetic age/recovery feasibility experiment | An operational vault or imported grant authority |
+| `sprite` (optional, Unix) | Loopback HTTP transport, separate role authentication, private fake initialization, exact review receipts and bounded audit | Sprite administration, a TLS edge, real-secret vault or agent sandbox |
 | CLI | Demo, JSON-lines fixture, foreground control, MCP client | An agent-mediated unlock or generic process runner |
 
 Names and public signatures in this checkpoint are experimental. Read rustdoc and the tested source for exact types. Security-relevant changes to a public type require contract review even before a stable semantic-versioning promise exists.
@@ -100,7 +103,7 @@ Approved destinations are enrolled protected file slots, direct descriptors/hand
 
 ## Explicit exclusions
 
-The implemented foundation excludes remote access, root/system daemons, automatic startup/unlock, team synchronization, arbitrary plugins, automatic updating, generic credential reads, arbitrary execution, caller-selected URLs, and an execution sandbox. Future protected-service arrangements require separately authorized enrollment and platform testing; this design does not install services or change permissions. Platform containment is a separately tested deployment property and a prerequisite for protected application delivery.
+The original local foundation excludes remote access; ADR 0019 permits a separate owner-deployed fake-secret HTTP experiment behind an owner-managed protected transport. Root/system daemons, automatic unlock, team synchronization, arbitrary plugins, automatic updating, generic credential reads, arbitrary execution, caller-selected URLs, and an execution sandbox remain excluded. Future protected-service arrangements require separately authorized enrollment and platform testing; this implementation does not install services or change host permissions. Platform containment is a separately tested deployment property and a prerequisite for protected application delivery.
 
 ## GitHub preparation boundary
 

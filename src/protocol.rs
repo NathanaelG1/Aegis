@@ -110,6 +110,10 @@ pub fn handle(client: &AgentClient, frame: &[u8]) -> Response {
         Ok(value) => value,
         Err(_) => return Response::failure(ErrorCode::InvalidRequest),
     };
+    handle_envelope(client, envelope)
+}
+
+pub(crate) fn handle_envelope(client: &AgentClient, envelope: Envelope) -> Response {
     if envelope.version != PROTOCOL_VERSION {
         return Response::failure(ErrorCode::UnsupportedVersion);
     }

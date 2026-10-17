@@ -13,6 +13,9 @@ pub mod types;
 #[cfg(all(unix, feature = "vault-spike"))]
 pub mod vault;
 
+#[cfg(all(feature = "sprite-demo", unix))]
+pub mod sprite;
+
 #[cfg(unix)]
 pub mod ipc;
 #[cfg(feature = "storage-spike")]

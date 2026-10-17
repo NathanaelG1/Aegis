@@ -18,7 +18,8 @@ parser.add_argument("--signing", action="store_true", help="Also record optional
 args = parser.parse_args()
 TARGET = args.target
 output = {"target": TARGET, "selection": "cargo tree normal/build/dev graph; not a compilation attestation", "configurations": {}}
-configurations = [("default", []), ("storage-spike", ["--features", "storage-spike"])]
+configurations = [("default", []), ("storage-spike", ["--features", "storage-spike"]),
+                  ("sprite-demo", ["--features", "sprite-demo"])]
 if args.signing:
     configurations += [("signing-spike", ["--features", "signing-spike"]), ("all-features", ["--all-features"])]
 for name, extra in configurations:

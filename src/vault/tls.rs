@@ -1180,7 +1180,7 @@ mod tests {
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
             fs::create_dir(&path).unwrap();
-            Self(path)
+            Self(path.canonicalize().unwrap())
         }
         fn protocol(&self) -> SyntheticProtocol {
             SyntheticProtocol::create(

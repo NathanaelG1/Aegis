@@ -535,6 +535,22 @@ impl Control {
         ))
     }
 
+    /// Pending legacy issue-status reviews for private control display.
+    /// Other operation variants fail closed rather than losing typed bindings.
+    pub fn pending_approvals(&self) -> Result<Vec<ApprovalView>, ErrorCode> {
+        let mut state = self.shared.lock()?;
+        let session = state.session;
+        let now = self.shared.check(&mut state, session)?;
+        state
+            .requests
+            .values()
+            .filter(|request| {
+                request.view.state == Lifecycle::AwaitingApproval && now < request.expires_at
+            })
+            .map(|request| approval_view(&state, request).into_legacy())
+            .collect()
+    }
+
     /// Canonical resolved fields for private human display, never agent rationale.
     pub fn inspect_operation_approval(&self, id: u64) -> Result<OperationApprovalView, ErrorCode> {
         let mut state = self.shared.lock()?;

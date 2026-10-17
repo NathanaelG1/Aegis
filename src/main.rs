@@ -1,4 +1,4 @@
-//! No secret inputs, provider networking, or persistent vault commands in this checkpoint.
+//! Synthetic workflows only. Optional owner-controlled HTTP service uses generated fake fixtures.
 use aegis::{
     fake::FakeProvider, protocol, Control, MonotonicClock, Parameters, PrepareInput, ProfileId,
     RequestId, SyntheticSetup,
@@ -27,9 +27,26 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         [arg] if matches!(arg.as_str(), "--help" | "-h" | "help") => {
             println!("Aegis experimental, synthetic-only\n\nCommands:\n  demo                  Scripted trusted-host policy demo\n  synthetic-agent       Standalone strict JSON-lines fixture (no control channel)\n  synthetic-broker --socket-dir NEW_ABSOLUTE_DIRECTORY\n                        Foreground Unix broker; private terminal controls\n  mcp --socket ABSOLUTE_SOCKET_PATH\n                        Legacy issue-status stdio client\n  synthetic-github-broker --socket-dir NEW_DIRECTORY --journal-dir NEW_DIRECTORY\n                        Fixed synthetic GitHub operation with retained intents\n  mcp-v2 --socket ABSOLUTE_SOCKET_PATH\n                        Version-2 typed-operation stdio client\n\nHuman control: inspect ID, approve ID, cancel ID, revoke, stop.\nNo real-secret input or live provider; see README.md for verified limits.");
+            #[cfg(all(feature = "sprite-demo", unix))]
+            println!("\nOwner-controlled fake-secret experiment:\n  sprite-demo-init --state-dir NEW_ABSOLUTE_DIRECTORY\n  sprite-demo-serve --state-dir ABSOLUTE_DIRECTORY --listen LOOPBACK_IP:PORT\nSeparate owner/agent authentication; TLS gateway/tunnel and deployment are owner-managed.\nSee docs/sprite-demo.md; real secrets and protected application delivery are unsupported.");
             Ok(())
         }
         [arg] if arg == "demo" => demo(),
+        #[cfg(all(feature = "sprite-demo", unix))]
+        [arg, flag, path] if arg == "sprite-demo-init" && flag == "--state-dir" => {
+            aegis::sprite::initialize(std::path::Path::new(path))?;
+            println!(
+                "sprite_demo_initialized; fake fixture only; credentials written to private files"
+            );
+            Ok(())
+        }
+        #[cfg(all(feature = "sprite-demo", unix))]
+        [arg, flag, path, listen_flag, address]
+            if arg == "sprite-demo-serve" && flag == "--state-dir" && listen_flag == "--listen" =>
+        {
+            aegis::sprite::serve(std::path::Path::new(path), address.parse()?)?;
+            Ok(())
+        }
         [arg] if arg == "synthetic-agent" => {
             let (_, client) = Control::synthetic(
                 SyntheticSetup::default(),

@@ -1,5 +1,11 @@
 # Threat model
 
+## Owner-controlled Sprite fake-secret extension (October 17)
+
+The opt-in [HTTP experiment](sprite-demo.md) trusts an owner-administered Sprite, broker code/configuration, operator client, gateway/tunnel and in-process fake provider. The agent receives only an independently generated agent bearer credential and typed operation results. Separate routes and exact credential checks reject role crossover, while canonical owner review receipts bind approval through the existing core. Model vendor and agent-provided identity/approval fields do not grant authority. Neither role-key nor fixture containers have Debug/Serialize implementations; no HTTP method exports the fixture. The Python agent bridge loads only its agent token, rejects redirects/ambient proxies, requires remote TLS, and pins the broker instance.
+
+The generated fixture is plaintext on trusted disk, not operational encrypted storage. File checks are not atomic against a hostile administrator/same-UID writer. Compromised Sprite administration, owner credential custody, writable broker code, gateway logging, memory/debug access, unbounded edge connections and malicious trusted recipients remain outside the demonstrated API boundary. The loopback server requires an owner-managed protected transport and gateway limits for remote access. One token maps to one agent principal per service; it is not multi-tenant isolation. A local verifier knows both role credentials and scans exercised outputs; it cannot prove deployed administrative exclusion, human presence, universal non-disclosure or protected application delivery. [ADR 0019](adr/0019-owner-controlled-sprite-demo.md) supersedes the earlier remote-access exclusion only for this synthetic mode.
+
 ## Protected-mechanism development delta (9 October 2026)
 
 [ADR 0018](adr/0018-protected-mechanism-development.md) adds maintained TLS 1.3

@@ -688,7 +688,7 @@ mod tests {
                 crypto::random_id().unwrap()
             ));
             fs::create_dir(&path).unwrap();
-            Self(path)
+            Self(path.canonicalize().unwrap())
         }
         fn custody(&self) -> PathBuf {
             self.0.join("custody")

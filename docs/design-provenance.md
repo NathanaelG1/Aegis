@@ -27,6 +27,8 @@ The writer-authentication limitation of recipient encryption is an architectural
 
 ## Future feature references
 
+The owner-controlled fake-secret extension checked primary [Axum](https://docs.rs/axum/0.8.9/axum/), [Tokio timeout](https://docs.rs/tokio/1.53.3/tokio/time/fn.timeout.html), and [subtle constant-time equality](https://docs.rs/subtle/2.6.1/subtle/trait.ConstantTimeEq.html) documentation on October 17, 2026. Manifest versions and Cargo.lock pin actual dependencies; documentation is not a deployment or audit result. [Sprites networking/lifecycle guidance](https://docs.fly.io/sprites/working-with-sprites) informs the owner-managed transport handoff. No Sprite was provisioned or accessed. See [ADR 0019](adr/0019-owner-controlled-sprite-demo.md).
+
 These public sources should be revisited during corresponding feature work; the current foundation does not claim implementation based on them:
 
 - [Rust age library](https://docs.rs/age/latest/age/) — select and pin a released version/features before integration.

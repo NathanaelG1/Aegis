@@ -30,7 +30,7 @@ mod unix {
                 NEXT.fetch_add(1, Ordering::SeqCst)
             ));
             fs::create_dir(&path).unwrap();
-            Self(path)
+            Self(path.canonicalize().unwrap())
         }
         fn command(&self) -> Command {
             let mut command = Command::new(env!("CARGO_BIN_EXE_aegis-recipient-process"));

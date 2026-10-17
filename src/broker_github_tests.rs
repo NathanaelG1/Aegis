@@ -160,6 +160,7 @@ fn every_legacy_handle_wrapper_rejects_github_before_mutation() {
     assert_eq!(h.control.remaining_uses().unwrap(), 2);
     assert_eq!(h.adapter().test_counts(), (0, 0, 0));
     h.client.request_operation_approval(id).unwrap();
+    assert_eq!(h.control.pending_approvals(), Err(ErrorCode::ScopeDenied));
     let reviewed = h.control.inspect_operation_approval(id).unwrap();
     h.control.approve_operation_reviewed(id, &reviewed).unwrap();
     assert_eq!(h.client.invoke(id), Err(ErrorCode::ScopeDenied));

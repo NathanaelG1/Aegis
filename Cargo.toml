@@ -12,6 +12,7 @@ default-run = "aegis"
 [features]
 default = []
 storage-spike = ["dep:age"]
+sprite-demo = ["dep:axum", "dep:tokio", "dep:subtle"]
 vault-spike = ["storage-spike", "signing-spike", "dep:rustls", "dep:rcgen"]
 signing-spike = ["dep:jsonwebtoken", "dep:aws-lc-rs", "dep:pkcs8", "dep:base64", "dep:zeroize"]
 
@@ -27,6 +28,9 @@ serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"
 getrandom = "=0.2.17"
 age = { version = "=0.11.1", default-features = false, optional = true }
+axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "tokio"], optional = true }
+tokio = { version = "=1.53.3", default-features = false, features = ["rt-multi-thread", "net", "time", "signal", "sync"], optional = true }
+subtle = { version = "=2.6.1", optional = true }
 jsonwebtoken = { version = "=11.1.0", default-features = false, features = ["aws_lc_rs"], optional = true }
 aws-lc-rs = { version = "=1.18.1", optional = true }
 pkcs8 = { version = "=0.11.0", default-features = false, optional = true }

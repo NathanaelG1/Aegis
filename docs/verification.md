@@ -1,5 +1,42 @@
 # Verification and evidence
 
+## October 17, 2026: merged main, Sprite and release workflow
+
+Integrated remote main `23448a3` with the local Sprite checkpoint `b4c089a` and
+tagged-release workflow `22a116c` on macOS 26.6.2 arm64 with Rust/Cargo 1.96.1.
+Both operation APIs remain available; legacy pending-review enumeration converts
+through the typed approval view and refuses non-issue operations. All incoming
+locked package versions were preserved, with 24 Sprite graph packages added.
+The Sprite decision is ADR 0019 to preserve main's existing ADR 0008–0018.
+
+`sh scripts/check.sh` passed 170 default and 409 all-feature all-target tests,
+formatting, Clippy and rustdoc with warnings denied. Default/all-feature doctests
+passed 1/26. The optimized Sprite binary passed all 111 workflow assertions.
+Both GitHub workflows passed actionlint. Three incoming test-fixture factories
+now canonicalize their temporary directories on macOS; production symlink
+rejection was preserved. The refreshed macOS dependency inventory records
+selected graphs rather than the older broad metadata graph.
+
+These are local merged-source checks. Hosted Linux/Windows release execution,
+deployed Sprite isolation and production security remain separate evidence gates.
+Earlier sections below retain their original source and feature scopes.
+
+## October 17, 2026: owner-controlled fake-secret HTTP/MCP extension
+
+The optional Unix `sprite-demo` feature was built and exercised locally on macOS 26.6.2 arm64, Rust/Cargo 1.96.1 and Python 3.14.6. The owner-controlled Sprite and its TLS gateway were not provisioned, accessed or deployed. Linux execution and deployed administrative isolation remain unverified. Separate owner/agent bearer authentication is implemented; physical human presence and protected client custody are not attested.
+
+| Check | Observed result |
+| --- | --- |
+| `sh scripts/check.sh` | Passed: formatting; 85 default tests; 101 all-feature tests; all-target/all-feature Clippy with warnings denied; all-feature rustdoc with warnings denied |
+| New Rust coverage | One incorrect-key fake-account unit test and one real HTTP/separate MCP agent subprocess workflow test; existing core policy/concurrency/expiry tests retained |
+| `cargo build --locked --offline --release --features sprite-demo` | Passed; optimized local macOS executable |
+| `python3 scripts/sprite_evidence.py --binary target/release/aegis --output-dir Evidence/sprite-demo-local-2026-10-17` | Passed 111 workflow assertions; one authenticated fake-provider dispatch, concurrent retries without another dispatch, distinct roles, exact owner review and restart denial |
+| Disclosure scan | Full fresh fake key, its random suffix and both role tokens absent from captured agent/owner responses, subprocess output and service logs in plaintext, hex and base64 forms |
+| Local Markdown links / `git diff --check` | Passed |
+| Dependency inventory | Updated macOS metadata: default 19, storage spike 128, Sprite demo 52, all features 152 third-party packages; not a dependency audit |
+
+Saved artifacts: [report and binary/source hashes](../Evidence/sprite-demo-local-2026-10-17/report.json), [agent-visible transcript](../Evidence/sprite-demo-local-2026-10-17/agent-transcript.jsonl), and [sanitized service log](../Evidence/sprite-demo-local-2026-10-17/service.log). The [guide](sprite-demo.md) and [ADR 0019](adr/0019-owner-controlled-sprite-demo.md) define reproduction and deployment responsibilities. The verifier is trusted with both role credentials and its agent subprocess is not an OS sandbox. Artifacts provide bounded output/API evidence, not universal non-disclosure, signed attestation, Sprite isolation, operational storage or protected application-delivery evidence. The original October 6 checkpoint below is historical and describes its local commands.
+
 ## Protected mechanism checkpoint (2026-10-09)
 
 Local tested runtime/tooling commit:
