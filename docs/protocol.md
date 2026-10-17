@@ -81,3 +81,11 @@ The foreground broker maintains this split with terminal control commands `inspe
 A host-readable MCP stderr stream is not the broker's control channel, and a client-supplied identity label or MCP annotation cannot create authority.
 
 See the [agent quickstart](agent-quickstart.md) for a full request sequence and [contracts](contracts.md) for retries, expiry, and revoke semantics.
+
+## Explicit operation protocol version 2
+
+The legacy contract above remains version 1. [The GitHub core integration](github-broker.md#wire-version-2) adds explicitly tagged operation/result types on version 2 and an opt-in V2 MCP mapping with the same six tool names. It has no control-approval, provider-revocation or credential-input method. Duplicate/unknown fields and cross-operation shapes fail closed. Existing LF/frame limits and broker epoch checks remain; socket responses must match the requested operation-protocol version.
+
+## Future authentication and network metadata
+
+The current wire is not HTTP and has no credential/identity/proxy-header fields. Host-bound identity is unaffected by MCP display metadata. [Access-contract regressions](../tests/access_contract.rs) reject claimed principals, IP/private-network and proxy/ACL claims as ordinary unsupported JSON fields; this does not test actual HTTP headers or a deployed proxy. A future transport authenticates before binding the client and evaluating the [application ACL](access-control.md), including status/discovery scope. Human administration remains separate. No new method or protocol version is added.

@@ -16,7 +16,7 @@ The full checkpoint check is [scripts/check.sh](scripts/check.sh):
 sh scripts/check.sh
 ```
 
-It verifies default and optional-storage targets with the pinned local toolchain, then treats Clippy and rustdoc warnings as errors. Its subprocess tests require local Unix socket binding. See [verification](docs/verification.md) for the actual execution context and saved results.
+It verifies default and all optional-feature targets with the pinned local toolchain, then treats Clippy and rustdoc warnings as errors. Its subprocess tests require local Unix socket binding. See [verification](docs/verification.md) for the actual execution context and saved results.
 
 For a focused default-feature loop:
 

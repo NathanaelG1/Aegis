@@ -161,7 +161,9 @@ fn request_pauses_for_control_approval_and_resumes_with_a_projection() {
     assert_eq!(display.policy_generation, 1);
     assert_eq!(display.expires_at, 15);
     assert_eq!(display.remaining_uses, 20);
+    assert_eq!(h.control.pending_approvals().unwrap(), vec![display]);
     assert_eq!(h.control.approve(id).unwrap().state, Lifecycle::Approved);
+    assert!(h.control.pending_approvals().unwrap().is_empty());
 
     let completed = h.client.invoke(id).unwrap();
     assert_eq!(completed.state, Lifecycle::Succeeded);

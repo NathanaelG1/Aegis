@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux / Rust 1.96.1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUSTUP_TOOLCHAIN: 1.96.1
+      CARGO_NET_OFFLINE: "true"
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - name: Check out the exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          set-safe-directory: false
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy --no-self-update
+
+      - name: Record source and runtime provenance
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          printf 'Tested source: %s\nWorkflow event SHA: %s\n' "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"
+          uname -a
+          cat /etc/os-release
+          rustc --version --verbose
+          cargo --version
+          sha256sum Cargo.lock
+
+      - name: Fetch the locked Linux dependency graph
+        id: fetch
+        env:
+          CARGO_NET_OFFLINE: "false"
+        run: cargo fetch --locked --target x86_64-unknown-linux-gnu
+
+      # Run each check even if another check fails; never suppress a failure.
+      - name: Check formatting
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo fmt --all -- --check
+
+      - name: Test all default-feature targets
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo test --locked --offline --all-targets --no-fail-fast
+
+      - name: Test all optional-feature targets
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo test --locked --offline --all-features --all-targets --no-fail-fast
+
+      - name: Test default-feature documentation
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo test --locked --offline --doc
+
+      - name: Test all-feature documentation
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo test --locked --offline --all-features --doc
+
+      - name: Deny Clippy warnings
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo clippy --locked --offline --all-features --all-targets -- -D warnings
+
+      - name: Deny rustdoc warnings
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo doc --locked --offline --all-features --no-deps

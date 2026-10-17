@@ -1,4 +1,4 @@
-# ADR 0008: Owner-controlled remote fake-secret workflow
+# ADR 0019: Owner-controlled remote fake-secret workflow
 
 **Status:** Implemented experiment; deployment boundary and real-secret readiness pending. **Date:** 2026-10-17.
 
