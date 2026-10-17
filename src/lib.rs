@@ -8,6 +8,9 @@ pub mod mcp;
 pub mod protocol;
 pub mod types;
 
+#[cfg(all(feature = "sprite-demo", unix))]
+pub mod sprite;
+
 #[cfg(unix)]
 pub mod ipc;
 #[cfg(feature = "storage-spike")]

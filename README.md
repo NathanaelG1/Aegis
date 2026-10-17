@@ -6,7 +6,13 @@ An experimental local capability broker for developer and agent workflows.
 
 Aegis mediates between a human, an agent, and an application. A human privately provisions credentials and approves bounded authority. An agent can request a reviewed operation or propose configuring two systems using secret references. The intended broker either uses the credential for the approved operation or delivers it directly to an approved isolated application's protected file, descriptor, or credential store. The agent receives only validated results or safe delivery status and must be unable to read the delivered token. Keeping a token out of a model's context and preventing agent-executed code from reading it are separate responsibilities.
 
-**Current stage: synthetic foundation.** This repository implements an in-memory Rust broker, a fake provider, an explicitly started Unix foreground broker, and a thin stdio MCP client. An optional age experiment saves and restores only a fixed synthetic fixture in separate processes. There is no real credential input, live provider connection, operational vault, or production setup path. It is not independently audited. A same-user process is not an operating-system containment boundary.
+**Current stage: synthetic foundation.** This repository implements an in-memory Rust broker, a fake provider, an explicitly started Unix foreground broker, and a thin stdio MCP client. The opt-in [owner-controlled Sprite experiment](docs/sprite-demo.md) adds a loopback HTTP service, separate owner/agent authentication, exact owner review receipts, a generated fake key and an HTTP-backed stdio MCP client. An optional age experiment saves and restores only a fixed synthetic fixture in separate processes. There is no real credential input, live provider connection, operational vault, or production setup path. It is not independently audited. A same-user process is not an operating-system containment boundary.
+
+## Owner-controlled Sprite experiment
+
+Build with `cargo build --locked --features sprite-demo`, then use `aegis sprite-demo-init --state-dir <new-absolute-directory>` and `aegis sprite-demo-serve --state-dir <directory> --listen 127.0.0.1:7979`. The owner privately retains Sprite administration and `owner.key`; the agent receives only `agent.key` and uses bounded operations. The generated fake provider key remains inside the trusted broker. Provisioning, deployment and the remote TLS gateway/tunnel are owner-managed.
+
+Run `python3 scripts/sprite_evidence.py --binary target/debug/aegis --output-dir Evidence/sprite-demo-local` to produce a fresh-key report, agent transcript and sanitized service log. The verifier checks successful use, role separation, exact approval, retries, revocation and restart behavior, then scans captured outputs for key disclosure. This is bounded API evidence, not proof of deployed OS/admin isolation. Follow the [complete setup and evidence guide](docs/sprite-demo.md) before deployment; use generated fake fixtures only.
 
 ## Try the synthetic demo
 
@@ -43,6 +49,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 | [Protected application delivery](docs/application-delivery.md) | Required agent-blind configuration workflow, immutable approval, OS boundary, and implementation gates; design only |
 | [Threat model](docs/threat-model.md) | Assets, adversaries, workflow limits, and evidence required for stronger modes |
 | [Standalone binary](docs/standalone-binary.md) | Local release artifact, broker/client executable layout, runtime requirements and Mac-only evidence |
+| [Owner-controlled Sprite demo](docs/sprite-demo.md) | Optional fake-secret HTTP/MCP workflow, private role credentials, operator deployment handoff and disclosure evidence |
 | [Developer quickstart](docs/developer-quickstart.md) | Build, test, change, and debug safely |
 | [Agent quickstart](docs/agent-quickstart.md) | Invoke bounded operations without supplying credentials or manufacturing approval |
 | [Experimental protocol](docs/protocol.md) | JSON-lines version 1 methods, bounds, and result shapes |
@@ -56,6 +63,6 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 
 ## Platform and release status
 
-The tested local target is macOS 26.6.2 on arm64 with Rust 1.96.1. See [verification](docs/verification.md) for checks and limits. Linux peer-check code exists but is untested; Windows transport support is absent. Protected application delivery, independent human authentication, desktop lifecycle handling, protected headless approval, storage durability, and OS isolation remain unimplemented or unverified. Linux, macOS, and Windows delivery arrangements are proposals requiring separate platform tests.
+The initial tested local target was macOS 26.6.2 on arm64 with Rust 1.96.1. See [verification](docs/verification.md) for current checks and limits. Linux peer-check code exists but is untested; Windows transport support is absent. The Sprite experiment adds distinct role-credential authentication, not physical human-presence proof. Protected application delivery, desktop lifecycle handling, protected headless client custody, storage durability, and OS isolation remain unimplemented or unverified. Linux, macOS, and Windows delivery arrangements are proposals requiring separate platform tests.
 
 Aegis source and documentation are available under the [MIT license](LICENSE). Third-party dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md) and the dependency inventory. Public source availability does not establish a reviewed production release. The [security policy](SECURITY.md) is a draft for this experimental project. Contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -14,7 +14,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--target", default=host, help="Metadata target only; this does not build or test that platform")
 TARGET = parser.parse_args().target
 output = {"target": TARGET, "configurations": {}}
-for name, extra in [("default", []), ("storage-spike", ["--features", "storage-spike"])]:
+for name, extra in [("default", []), ("storage-spike", ["--features", "storage-spike"]),
+                    ("sprite-demo", ["--features", "sprite-demo"]), ("all-features", ["--all-features"])]:
     metadata = json.loads(subprocess.check_output([
         "cargo", "metadata", "--locked", "--offline", "--format-version", "1",
         "--filter-platform", TARGET, *extra,

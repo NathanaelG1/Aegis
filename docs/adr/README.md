@@ -11,3 +11,4 @@ ADRs freeze the decisions made for the synthetic foundation and identify unresol
 | [0005](0005-protocol-and-output-contracts.md) | Synthetic Unix/MCP implemented | Thin agent protocol/MCP; strict typed result projection |
 | [0006](0006-release-evidence-and-license.md) | Accepted gate; MIT selected | Claims follow platform evidence and independent review; MIT first-party licensing with separate dependency review |
 | [0007](0007-protected-application-delivery.md) | Required product design; implementation/enforcement pending | Agent-blind delivery to enrolled isolated applications, exact human approval and fail-closed OS boundary |
+| [0008](0008-owner-controlled-sprite-demo.md) | Fake-secret HTTP/MCP workflow implemented; deployment boundary pending | Owner-controlled Sprite, separate role authentication, exact review receipts, reproducible bounded disclosure evidence |

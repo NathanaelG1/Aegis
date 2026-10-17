@@ -1,5 +1,7 @@
 # Roadmap and release gates
 
+**October 17 extension:** [ADR 0008](adr/0008-owner-controlled-sprite-demo.md) implements an opt-in owner-controlled fake-secret HTTP/MCP workflow with separate role authentication, exact review and local evidence export. It advances the synthetic operation path; provisioning/deployment, protected client/admin isolation, real custody/recovery and required application delivery remain open. It does not silently authorize a remote operational vault or broaden the original foreground commands.
+
 The design prioritizes a local capability broker with a portable `age` backend and required protected agent-blind application delivery. This checkpoint implements synthetic policy, foreground Unix/MCP workflow, and a separate optional saved-fixture age recovery spike. Protected delivery is not yet implemented or verified. The gates below determine what may be claimed; they are not authorization for real credentials, provider access, migration, permissions changes, or publication.
 
 ## A — Contracts and feasibility

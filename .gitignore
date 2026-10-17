@@ -2,3 +2,5 @@
 /.demo/
 *.age
 *.key
+__pycache__/
+*.pyc

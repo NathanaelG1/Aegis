@@ -1,5 +1,23 @@
 # Verification and evidence
 
+## October 17, 2026: owner-controlled fake-secret HTTP/MCP extension
+
+The optional Unix `sprite-demo` feature was built and exercised locally on macOS 26.6.2 arm64, Rust/Cargo 1.96.1 and Python 3.14.6. The owner-controlled Sprite and its TLS gateway were not provisioned, accessed or deployed. Linux execution and deployed administrative isolation remain unverified. Separate owner/agent bearer authentication is implemented; physical human presence and protected client custody are not attested.
+
+| Check | Observed result |
+| --- | --- |
+| `sh scripts/check.sh` | Passed: formatting; 85 default tests; 101 all-feature tests; all-target/all-feature Clippy with warnings denied; all-feature rustdoc with warnings denied |
+| New Rust coverage | One incorrect-key fake-account unit test and one real HTTP/separate MCP agent subprocess workflow test; existing core policy/concurrency/expiry tests retained |
+| `cargo build --locked --offline --release --features sprite-demo` | Passed; optimized local macOS executable |
+| `python3 scripts/sprite_evidence.py --binary target/release/aegis --output-dir Evidence/sprite-demo-local-2026-10-17` | Passed 111 workflow assertions; one authenticated fake-provider dispatch, concurrent retries without another dispatch, distinct roles, exact owner review and restart denial |
+| Disclosure scan | Full fresh fake key, its random suffix and both role tokens absent from captured agent/owner responses, subprocess output and service logs in plaintext, hex and base64 forms |
+| Local Markdown links / `git diff --check` | Passed |
+| Dependency inventory | Updated macOS metadata: default 19, storage spike 128, Sprite demo 52, all features 152 third-party packages; not a dependency audit |
+
+Saved artifacts: [report and binary/source hashes](../Evidence/sprite-demo-local-2026-10-17/report.json), [agent-visible transcript](../Evidence/sprite-demo-local-2026-10-17/agent-transcript.jsonl), and [sanitized service log](../Evidence/sprite-demo-local-2026-10-17/service.log). The [guide](sprite-demo.md) and [ADR 0008](adr/0008-owner-controlled-sprite-demo.md) define reproduction and deployment responsibilities. The verifier is trusted with both role credentials and its agent subprocess is not an OS sandbox. Artifacts provide bounded output/API evidence, not universal non-disclosure, signed attestation, Sprite isolation, operational storage or protected application-delivery evidence. The original October 6 checkpoint below is historical and describes its local commands.
+
+## Original local checkpoint
+
 **Checkpoint:** 2026-10-06. The tested scope is a synthetic in-memory broker/fake provider, separate Unix foreground and MCP subprocesses, and an optional fixed-fixture age recovery experiment. Passing these tests establishes only their exercised behavior on the recorded build; it does not establish production readiness, real credential custody, genuine human presence, or OS containment.
 
 Protected agent-blind application delivery is required but not yet implemented or verified. Its [contract](application-delivery.md) and [ADR](adr/0007-protected-application-delivery.md) are documentation-only additions. They add no Rust code or tests; the recorded 85/99 counts cover the existing synthetic implementation, not delivery enforcement. No protected file installation, descriptor/store handoff, application enrollment, independently authenticated human control or OS confinement gate has been exercised.
