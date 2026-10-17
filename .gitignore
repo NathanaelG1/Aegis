@@ -1,4 +1,5 @@
 /target/
+/dist/
 /.demo/
 *.age
 *.key

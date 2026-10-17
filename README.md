@@ -10,6 +10,8 @@ Aegis mediates between a human, an agent, and an application. A human privately 
 
 ## Owner-controlled Sprite experiment
 
+For a prebuilt executable, see [downloadable binaries and installation](docs/releases.md). The tag-triggered release workflow builds Linux x64/arm64, macOS Intel/Apple Silicon and Windows x64 archives. Linux and macOS packages include `sprite-demo`; Windows currently provides only the synthetic CLI commands.
+
 Build with `cargo build --locked --features sprite-demo`, then use `aegis sprite-demo-init --state-dir <new-absolute-directory>` and `aegis sprite-demo-serve --state-dir <directory> --listen 127.0.0.1:7979`. The owner privately retains Sprite administration and `owner.key`; the agent receives only `agent.key` and uses bounded operations. The generated fake provider key remains inside the trusted broker. Provisioning, deployment and the remote TLS gateway/tunnel are owner-managed.
 
 Run `python3 scripts/sprite_evidence.py --binary target/debug/aegis --output-dir Evidence/sprite-demo-local` to produce a fresh-key report, agent transcript and sanitized service log. The verifier checks successful use, role separation, exact approval, retries, revocation and restart behavior, then scans captured outputs for key disclosure. This is bounded API evidence, not proof of deployed OS/admin isolation. Follow the [complete setup and evidence guide](docs/sprite-demo.md) before deployment; use generated fake fixtures only.
