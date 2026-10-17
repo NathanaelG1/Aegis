@@ -79,3 +79,69 @@ jobs:
       - name: Deny rustdoc warnings
         if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
         run: cargo doc --locked --offline --all-features --no-deps
+
+  native-release-checks:
+    name: Release checks / ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            target: aarch64-apple-darwin
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            rustflags: '-C target-feature=+crt-static'
+    defaults:
+      run:
+        shell: bash
+    env:
+      RUSTUP_TOOLCHAIN: 1.96.1
+      CARGO_NET_OFFLINE: "true"
+      CHECK_TARGET: ${{ matrix.target }}
+      RUSTFLAGS: ${{ matrix.rustflags || '' }}
+    steps:
+      - name: Check out the exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          set-safe-directory: false
+
+      - name: Install the pinned native toolchain
+        run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --target "$CHECK_TARGET" --component rustfmt --component clippy --no-self-update
+
+      - name: Verify source and toolchain
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          rustc --version --verbose
+          cargo --version
+
+      - name: Fetch the locked native dependency graph
+        id: fetch
+        env:
+          CARGO_NET_OFFLINE: "false"
+        run: cargo fetch --locked --target "$CHECK_TARGET"
+
+      - name: Check formatting
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo fmt --all -- --check
+
+      - name: Test default features on the native OS
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo test --locked --offline --target "$CHECK_TARGET" --all-targets --no-fail-fast
+
+      - name: Test all features on the native OS
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo test --locked --offline --target "$CHECK_TARGET" --all-features --all-targets --no-fail-fast
+
+      - name: Deny native Clippy warnings
+        if: ${{ !cancelled() && steps.fetch.outcome == 'success' }}
+        run: cargo clippy --locked --offline --target "$CHECK_TARGET" --all-features --all-targets -- -D warnings

@@ -882,7 +882,7 @@ mod tests {
         assert!(!Path::new(&format!("/proc/{pid}")).exists());
     }
 
-    #[derive(Clone, Copy, PartialEq)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
     enum Failure {
         KnownRejection,
         Missing,
@@ -936,7 +936,13 @@ mod tests {
                     );
                     match failure {
                         Failure::KnownRejection => {
-                            write_frame(&mut peer, response.bytes()).unwrap()
+                            write_frame(&mut peer, response.bytes()).unwrap();
+                            // Isolate a signed rejection from a transport disconnect.
+                            // macOS can reject SO_RCVTIMEO with EINVAL after the peer
+                            // closes, even while response bytes remain buffered. The
+                            // real recipient stays connected; do the same until the
+                            // broker has consumed and replayed this fixture's result.
+                            let _ = wait.recv();
                         }
                         Failure::Missing => {}
                         Failure::Malformed => {
@@ -1014,7 +1020,8 @@ mod tests {
                     Lifecycle::OutcomeUnknown
                 } else {
                     Lifecycle::Failed
-                }
+                },
+                "failure mode: {failure:?}"
             );
             assert!(reused);
             assert_eq!(
