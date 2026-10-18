@@ -118,8 +118,11 @@ impl OperationSetup {
 /// Created only after core approval checks. Not Clone, Deserialize, Serialize or public.
 pub(crate) struct AuthorizedDispatch {
     pub(crate) approval: OperationApprovalView,
+    #[cfg(unix)]
     pub(crate) request_id: RequestId,
+    #[cfg(unix)]
     pub(crate) reserved_at: u64,
+    #[cfg(unix)]
     pub(crate) remaining_before: u32,
 }
 enum ExecutorKind {
@@ -1022,8 +1025,11 @@ impl AgentClient {
                     .reviewed
                     .clone()
                     .unwrap_or_else(|| approval_view(&state, request)),
+                #[cfg(unix)]
                 request_id: request.input.request_id.clone(),
+                #[cfg(unix)]
                 reserved_at: now,
+                #[cfg(unix)]
                 remaining_before: state.remaining,
             };
             // Authentication/ACL/proof failure must precede budget consumption.

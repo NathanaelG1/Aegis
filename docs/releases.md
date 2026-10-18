@@ -53,6 +53,12 @@ These downloads remain synthetic experiments. They accept no real credentials an
 
 ## Publishing a tag
 
+Pull-request CI checks default/all-feature tests and Clippy with warnings denied
+on native Linux x86-64/arm64, macOS Intel/Apple Silicon and Windows MSVC runners.
+The Windows checks use the release's static-CRT flags. The existing Linux job also
+checks documentation. These checks do not build, publish or retag a release;
+the tag-triggered release workflow remains separate.
+
 Commit the intended source, lockfile and workflow before tagging. Tag names must contain 1–128 letters, digits, dots, underscores or hyphens, starting with a letter or digit. Prefer `v<package-version>` (for example `v0.1.0-experimental`). The tag identifies the release; `aegis --version` reports the version in `Cargo.toml`, which is also recorded in `release.json`.
 
 ```sh
