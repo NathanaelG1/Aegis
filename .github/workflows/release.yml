@@ -115,7 +115,7 @@ jobs:
           sed 's/\r$//' artifacts/*.sha256 > artifacts/SHA256SUMS
           cd artifacts
           sha256sum --check SHA256SUMS
-      - name: Create the experimental release with all assets
+      - name: Publish assets to the tagged release
         run: |
           set -euo pipefail
           printf '%s\n' \
@@ -125,7 +125,18 @@ jobs:
             '' \
             'Each archive includes installation instructions, platform limits, licenses, and build metadata. Verify your download against SHA256SUMS. These experimental binaries are not distribution-signed or notarized and do not establish production security or deployed Sprite isolation.' \
             > release-notes.md
-          gh release create "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.zip artifacts/SHA256SUMS \
-            --verify-tag --draft --prerelease --latest=false \
-            --title "Aegis $RELEASE_TAG" --notes-file release-notes.md
-          gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          if gh release view "$RELEASE_TAG" --json isDraft > existing-release.json; then
+            if [[ "$(jq -r .isDraft existing-release.json)" != false ]]; then
+              echo '::error::The tag has an unpublished draft. Publish or remove that draft before retrying.'
+              exit 1
+            fi
+            # A release created through GitHub's UI may already own this tag.
+            # Attach the verified files to it without replacing existing assets.
+            gh release upload "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.zip artifacts/SHA256SUMS
+          else
+            # Let gh create, upload and publish the same release by its ID.
+            # A separate edit by tag can select a different pre-existing release.
+            gh release create "$RELEASE_TAG" artifacts/*.tar.gz artifacts/*.zip artifacts/SHA256SUMS \
+              --verify-tag --prerelease --latest=false \
+              --title "Aegis $RELEASE_TAG" --notes-file release-notes.md
+          fi
