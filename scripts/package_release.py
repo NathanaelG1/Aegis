@@ -117,7 +117,11 @@ def package(tag, target, features):
             raise RuntimeError("archive extraction changed the executable")
         smoke_test(extracted / name, executable, version, features)
     checksum = hashlib.sha256(archive.read_bytes()).hexdigest()
-    archive.with_name(archive.name + ".sha256").write_text(f"{checksum}  {archive.name}\n")
+    # Text mode translates LF to CRLF on Windows; checksum manifests are read
+    # by the Linux publish job and must use the same bytes on every platform.
+    archive.with_name(archive.name + ".sha256").write_bytes(
+        f"{checksum}  {archive.name}\n".encode("ascii")
+    )
     print(f"Packaged and verified {archive.name}")
 
 

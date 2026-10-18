@@ -69,3 +69,8 @@ git push origin v0.1.0-experimental
 The workflow installs the toolchain pinned in `rust-toolchain.toml`, uses locked dependencies and native runners, tests default/all features, runs Clippy, verifies the optimized Unix Sprite workflow, then executes the extracted binary's help/version, policy demo and JSON-lines discovery from an empty working directory without Cargo or PATH. Build jobs have read-only repository permissions; only the final publishing job can write a release. It verifies the five archive checksums before creating a draft with all assets and publishing it as a prerelease.
 
 If any platform fails, publication is blocked. Each successful build's archive remains available as an Actions artifact for seven days. A failure after draft creation can leave a draft; inspect/remove that draft before rerunning the publishing job. Existing releases are not overwritten. Tagging and publishing are operator actions; adding this workflow does not create a tag or release by itself.
+
+Checksum sidecars use ASCII with LF line endings on every OS. The publisher also
+normalizes older Windows CRLF sidecars before verifying the archive hashes. After
+merging a workflow fix, create a new tag to use it: rerunning an existing tagged
+run uses that tag's original workflow and packaging code.
