@@ -60,6 +60,8 @@ jobs:
           rustc --version
       - name: Check formatting
         run: cargo fmt --all -- --check
+      - name: Test release packaging
+        run: python -m unittest discover -s scripts -p 'test_package_release.py'
       - name: Test default and optional features on the native OS
         run: |
           cargo test --locked --target "$RELEASE_TARGET" --all-targets
@@ -109,7 +111,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(find artifacts -name '*.sha256' | wc -l)" -eq 5
-          cat artifacts/*.sha256 > artifacts/SHA256SUMS
+          # Accept CRLF sidecars from older Windows packaging jobs as well.
+          sed 's/\r$//' artifacts/*.sha256 > artifacts/SHA256SUMS
           cd artifacts
           sha256sum --check SHA256SUMS
       - name: Create the experimental release with all assets
