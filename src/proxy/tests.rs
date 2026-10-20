@@ -395,7 +395,7 @@ fn http_boundary_rejects_ambient_authority_and_returns_only_projection() {
             .unwrap();
         write!(stream, "POST {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n{authorization}{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
         let mut output = String::new();
-        stream.read_to_string(&mut output).unwrap();
+        read_http_response(&mut stream, &mut output).unwrap();
         assert!(!output.contains(CANARY));
         assert!(!output.contains(&token));
         output
@@ -431,4 +431,65 @@ fn http_boundary_rejects_ambient_authority_and_returns_only_projection() {
     upstream.join().unwrap();
     stop.send(()).unwrap();
     server.join().unwrap();
+}
+
+// These fixture responses have Content-Length. Do not read through connection
+// closure: rejecting an unread request body can produce a TCP reset on macOS
+// after the complete HTTP response has already arrived.
+fn read_http_response(reader: impl Read, output: &mut String) -> std::io::Result<()> {
+    use std::io::{BufRead, BufReader, Error as IoError, ErrorKind};
+    let mut reader = BufReader::new(reader);
+    let mut headers = String::new();
+    loop {
+        let mut line = String::new();
+        if reader.read_line(&mut line)? == 0 {
+            return Err(IoError::from(ErrorKind::UnexpectedEof));
+        }
+        headers.push_str(&line);
+        if line == "\r\n" {
+            break;
+        }
+        if headers.len() > 32768 {
+            return Err(IoError::from(ErrorKind::InvalidData));
+        }
+    }
+    let length = headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case("content-length")
+                .then(|| value.trim().parse::<usize>().ok())
+                .flatten()
+        })
+        .filter(|length| *length <= 65536)
+        .ok_or_else(|| IoError::from(ErrorKind::InvalidData))?;
+    let mut body = vec![0; length];
+    reader.read_exact(&mut body)?;
+    *output =
+        headers + &String::from_utf8(body).map_err(|_| IoError::from(ErrorKind::InvalidData))?;
+    Ok(())
+}
+
+#[test]
+fn http_fixture_accepts_complete_response_before_reset_but_not_truncation() {
+    struct ResetAfter(std::io::Cursor<Vec<u8>>);
+    impl Read for ResetAfter {
+        fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+            if self.0.position() == self.0.get_ref().len() as u64 {
+                return Err(std::io::ErrorKind::ConnectionReset.into());
+            }
+            self.0.read(bytes)
+        }
+    }
+    let complete = b"HTTP/1.1 400 Bad Request\r\nContent-Length: 2\r\n\r\n{}".to_vec();
+    let mut output = String::new();
+    read_http_response(
+        ResetAfter(std::io::Cursor::new(complete.clone())),
+        &mut output,
+    )
+    .unwrap();
+    assert_eq!(output.as_bytes(), complete);
+    let truncated = complete[..complete.len() - 1].to_vec();
+    assert!(read_http_response(ResetAfter(std::io::Cursor::new(truncated)), &mut output).is_err());
+    assert!(read_http_response(std::io::Cursor::new(b"HTTP/1.1 400"), &mut output).is_err());
 }

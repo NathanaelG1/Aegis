@@ -24,13 +24,16 @@ struct Console {
 }
 impl Console {
     fn new() -> Self {
+        // Wall-clock timestamps can be identical across parallel test threads.
+        static NEXT_FIXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-            "aegis-tui-{}-{}",
+            "aegis-tui-{}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT_FIXTURE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         fs::create_dir(&root).unwrap();
         use std::os::unix::fs::PermissionsExt;
