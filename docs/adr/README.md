@@ -23,3 +23,4 @@ ADRs freeze the decisions made for the synthetic foundation and identify unresol
 | [0017](0017-synthetic-adapter-foundations.md) | Fixed-fixture adapter groundwork | Metadata-only entry ceremony, enrolled recipient handoff and bounded peer-bound channel framing; production activation refused |
 | [0018](0018-protected-mechanism-development.md) | Accepted for canary-only mechanism development | Maintained mTLS, bounded encrypted import and separate recipient execution; deployment and real-key gates retained |
 | [0019](0019-owner-controlled-sprite-demo.md) | Fake-secret HTTP/MCP workflow implemented; deployment boundary pending | Owner-controlled Sprite, separate role authentication, exact review receipts, reproducible bounded disclosure evidence |
+| [0020](0020-service-scoped-secret-injection.md) | Experimental real-secret Unix proxy | Generic service ACLs, encrypted owner custody, exact HTTPS operations and native Rust tooling |

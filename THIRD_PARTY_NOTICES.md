@@ -21,3 +21,13 @@ unchanged; the all-feature graph adds 12 package identities. See the
 for the explicit AWS-LC configuration and the upstream advisory motivating the
 Rustls pin. The inventory and that specific advisory check do not constitute a
 complete dependency, license or security audit.
+
+The optional `proxy` reuses the existing age, TLS, HTTP, hashing and secret-buffer
+libraries. Its [macOS arm64 inventory](docs/dependency-inventory-proxy.json) records
+19 default, 52 Sprite, 126 storage, 170 proxy and 183 all-feature package identities.
+New package identities relative to the previous all-feature graph are tokio-rustls
+0.26.4 (MIT OR Apache-2.0), webpki-roots 1.0.3 (CDLA-Permissive-2.0), want 0.3.2
+(MIT), and try-lock 0.2.5 (MIT). Newly direct entries already present transitively
+are Hyper 1.12.0, hyper-util 0.1.21 and http-body-util 0.1.5 (MIT), and SHA-2
+0.10.9 (MIT OR Apache-2.0). `xtask` reuses serde_json and SHA-2. This inventory is
+not an independent vulnerability or license audit.

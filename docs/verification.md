@@ -1,5 +1,54 @@
 # Verification and evidence
 
+## October 18, 2026: guided terminal console
+
+The Unix proxy build now opens its owner TUI when invoked without arguments in
+an interactive terminal. Five real pseudo-terminal tests passed in debug and
+optimized macOS arm64 builds: complete vault/secret/service setup and policy
+editing, canceled input with no saved secret, bracketed paste and resize handling,
+overlong-input rejection, normal terminal-mode restoration, and the lifecycle of
+a console-managed proxy. The tests use disposable values and check that provider
+keys and service tokens never appear in captured terminal output.
+
+`sh scripts/check.sh` passed 170 default and 423 all-feature all-target tests,
+the release-tooling test, formatting, Clippy and rustdoc. The optimized console
+was also opened and inspected in a terminal with its colored logo and menu.
+Native archive smoke checks and the installer fixture checks passed after the
+UI changes. No new dependencies were added for the console; it uses the existing
+nix terminal support and broker APIs. No release or deployed Sprite was changed.
+Hosted Linux execution and terminal-emulator compatibility beyond these local
+checks remain separate validation.
+
+## October 18, 2026: generic secret injection and native tooling
+
+Local working-tree validation on macOS 26.6.2 arm64, Rust/Cargo 1.96.1:
+
+- `sh scripts/check.sh` passed formatting, 170 default and 418 all-feature
+  all-target tests, the native checksum test, Clippy and rustdoc with warnings denied.
+- All 26 all-feature doctests passed. Nine new proxy tests exercised encrypted
+  storage/tampering, private-file/link rejection, service ACLs, actual local TLS
+  injection, response projection/echo rejection, redirects, invalid certificates,
+  HTTP authentication/body framing, concurrent retries, call limits and restart replay.
+- The native Sprite HTTP/MCP subprocess workflow passed in debug and optimized
+  release builds. It replaces the retired interpreter-based tooling.
+- `xtask package v0.0.4-local aarch64-apple-darwin` built a local test archive and
+  verified its extracted binary's help/version, demo and JSON-lines discovery with
+  an empty environment/working directory. `v0.0.4-local` is only an artifact label;
+  no Git tag or release was created.
+- The installer passed with a local download fixture serving that archive, including
+  a destination containing spaces, checksum-failure rejection and rejection of an
+  older executable without the proxy. This does not exercise GitHub downloads.
+- Workflow actionlint, shell syntax and `git diff --check` passed. The lockfile
+  adds four third-party package identities; the new [inventory](dependency-inventory-proxy.json)
+  records the selected graphs and declared licenses.
+
+All credential values used in verification were disposable fixtures. The proxy's
+real-credential path is implemented, but no live provider, actual user key, Sprite,
+remote gateway or deployed administrator isolation was exercised. Linux/Windows
+and Intel macOS validation of this change remain for hosted CI. The public installer
+requires a newly published tag containing these changes. Earlier evidence below
+retains its original source and feature scope.
+
 ## October 17, 2026: merged main, Sprite and release workflow
 
 Integrated remote main `23448a3` with the local Sprite checkpoint `b4c089a` and
@@ -30,7 +79,7 @@ The optional Unix `sprite-demo` feature was built and exercised locally on macOS
 | `sh scripts/check.sh` | Passed: formatting; 85 default tests; 101 all-feature tests; all-target/all-feature Clippy with warnings denied; all-feature rustdoc with warnings denied |
 | New Rust coverage | One incorrect-key fake-account unit test and one real HTTP/separate MCP agent subprocess workflow test; existing core policy/concurrency/expiry tests retained |
 | `cargo build --locked --offline --release --features sprite-demo` | Passed; optimized local macOS executable |
-| `python3 scripts/sprite_evidence.py --binary target/release/aegis --output-dir Evidence/sprite-demo-local-2026-10-17` | Passed 111 workflow assertions; one authenticated fake-provider dispatch, concurrent retries without another dispatch, distinct roles, exact owner review and restart denial |
+| Retired October 17 process harness (historical checkpoint) | Passed 111 workflow assertions; one authenticated fake-provider dispatch, concurrent retries without another dispatch, distinct roles, exact owner review and restart denial |
 | Disclosure scan | Full fresh fake key, its random suffix and both role tokens absent from captured agent/owner responses, subprocess output and service logs in plaintext, hex and base64 forms |
 | Local Markdown links / `git diff --check` | Passed |
 | Dependency inventory | Updated macOS metadata: default 19, storage spike 128, Sprite demo 52, all features 152 third-party packages; not a dependency audit |
@@ -147,7 +196,7 @@ The [quality script](../scripts/check.sh) completed with exit code zero on the n
 
 The pinned 1.96.1 dependency cache is available for the observed default checks. Full graph advisory/license review, platform expansion, and independent security composition review remain outstanding. Separate reviewers completed focused correctness and maintainability reviews of the first checkpoint and its fixes; see [review remediation](review-checkpoint.md). The earlier Rust 1.80.1 core-only check is historical; it does not establish compatibility of the current dependency graph.
 
-The [dependency inventory](dependency-inventory.json) records 19 third-party packages for the default `aarch64-apple-darwin` configuration and 128 with `storage-spike`, excluding the first-party crate. It records resolved versions, enabled features, declared licenses, and Rust versions; it is an inventory, not an advisory/license audit or a cross-target review. Its generator is [dependency_inventory.py](../scripts/dependency_inventory.py).
+The [dependency inventory](dependency-inventory.json) records 19 third-party packages for the default `aarch64-apple-darwin` configuration and 128 with `storage-spike`, excluding the first-party crate. It records resolved versions, enabled features, declared licenses, and Rust versions; it is an inventory, not an advisory/license audit or a cross-target review. This historical inventory used the retired helper. Current inventories use `cargo run --locked -p xtask -- inventory TARGET OUTPUT.json`.
 
 ## Platform regression and execution context
 

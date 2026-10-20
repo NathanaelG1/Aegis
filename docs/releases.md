@@ -8,13 +8,13 @@ Archive names are `aegis-<tag>-<target>.tar.gz` on Unix and `.zip` on Windows. E
 
 | OS / CPU | Target | Runtime baseline | Included commands |
 | --- | --- | --- | --- |
-| Linux x64 | `x86_64-unknown-linux-gnu` | glibc 2.35+ (built/tested on Ubuntu 22.04) | Synthetic CLI, Unix broker/MCP, Sprite demo |
-| Linux arm64 | `aarch64-unknown-linux-gnu` | glibc 2.35+ (built/tested on Ubuntu 22.04 arm64) | Synthetic CLI, Unix broker/MCP, Sprite demo |
-| macOS Apple Silicon | `aarch64-apple-darwin` | Native runner: macOS 15 | Synthetic CLI, Unix broker/MCP, Sprite demo |
-| macOS Intel | `x86_64-apple-darwin` | Native runner: macOS 15 Intel | Synthetic CLI, Unix broker/MCP, Sprite demo |
+| Linux x64 | `x86_64-unknown-linux-gnu` | glibc 2.35+ (built/tested on Ubuntu 22.04) | Secret proxy, native Sprite client, synthetic CLI/broker/MCP |
+| Linux arm64 | `aarch64-unknown-linux-gnu` | glibc 2.35+ (built/tested on Ubuntu 22.04 arm64) | Secret proxy, native Sprite client, synthetic CLI/broker/MCP |
+| macOS Apple Silicon | `aarch64-apple-darwin` | Native runner: macOS 15 | Secret proxy, native Sprite client, synthetic CLI/broker/MCP |
+| macOS Intel | `x86_64-apple-darwin` | Native runner: macOS 15 Intel | Secret proxy, native Sprite client, synthetic CLI/broker/MCP |
 | Windows x64 | `x86_64-pc-windows-msvc` | Windows 10+ / Server 2022; tested on Server 2022 | `demo`, `synthetic-agent`, help/version |
 
-The Linux downloads use system glibc; Alpine/musl is unsupported. macOS downloads are separate native executables, not a universal binary; older macOS versions are not tested by this workflow. Windows uses the statically linked MSVC runtime. Windows has no Unix socket transport or Sprite service. A downloadable executable does not add those missing interfaces.
+The Linux downloads use system glibc; Alpine/musl is unsupported. macOS downloads are separate native executables, not a universal binary; older macOS versions are not tested by this workflow. Windows uses the statically linked MSVC runtime. Windows has no Unix socket transport, secret proxy or Sprite service. A downloadable executable does not add those missing interfaces.
 
 ## Verify, extract and run
 
@@ -40,16 +40,21 @@ On Windows, extract the ZIP with Explorer or PowerShell's `Expand-Archive`, open
 
 No Rust, Cargo, source checkout or administrator installation is required at runtime. Move the executable into a directory on your PATH if desired. The binaries are not distribution-signed or notarized; downloaded macOS and Windows executables may require review through the OS's normal security UI. Checksums detect corruption; they do not provide independent publisher authentication.
 
-For the Linux Sprite installation, use the extracted Linux executable directly:
+For guided setup on Linux/macOS, run `./aegis` with no arguments in your terminal.
+The console walks through private storage, hidden key entry and service policies;
+it also starts/stops a local proxy. Explicit commands remain available for scripts.
+The console is included in releases built from this change, not earlier tags.
+
+For real secrets on a Linux Sprite, follow the [secret-proxy setup](secret-proxy.md), including the one-line installer. For the separate fake-secret demonstration:
 
 ```sh
 ./aegis sprite-demo-init --state-dir /home/sprite/aegis-private
 ./aegis sprite-demo-serve --state-dir /home/sprite/aegis-private --listen 127.0.0.1:7979
 ```
 
-Follow the included [Sprite guide](sprite-demo.md) for owner/agent credential custody and the owner-managed gateway. Unix archives also include `scripts/sprite_client.py`; Python 3.10+ is required only for that client. The Rust service itself needs no Python. Examples using `cargo` or `target/release/aegis` elsewhere in the documentation describe source builds; substitute the extracted executable for those invocations.
+Follow the included [Sprite guide](sprite-demo.md) for owner/agent credential custody and the owner-managed gateway. Unix executables include the native `aegis sprite-client` HTTP/MCP client; no interpreter is required. Examples using `cargo` or `target/release/aegis` elsewhere in the documentation describe source builds; substitute the extracted executable for those invocations.
 
-These downloads remain synthetic experiments. They accept no real credentials and do not establish production readiness, protected application delivery or deployed Sprite administrative isolation.
+The Unix proxy accepts real credentials through private owner provisioning; the demo commands remain synthetic. These experimental downloads do not establish production readiness, protected application delivery or deployed Sprite administrative isolation. Releases made before this change do not contain the proxy.
 
 ## Publishing a tag
 
@@ -74,3 +79,5 @@ Checksum sidecars use ASCII with LF line endings on every OS. The publisher also
 normalizes older Windows CRLF sidecars before verifying the archive hashes. After
 merging a workflow fix, create a new tag to use it: rerunning an existing tagged
 run uses that tag's original workflow and packaging code.
+
+Packaging and dependency inventories use the Rust workspace tool: `cargo run --locked -p xtask -- package TAG TARGET` and `cargo run --locked -p xtask -- inventory TARGET OUTPUT.json`. Packaging uses the operating system tar utility (bsdtar on Windows).

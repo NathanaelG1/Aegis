@@ -23,16 +23,16 @@ jobs:
         include:
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            features: sprite-demo
+            features: proxy
           - runner: ubuntu-22.04-arm
             target: aarch64-unknown-linux-gnu
-            features: sprite-demo
+            features: proxy
           - runner: macos-15-intel
             target: x86_64-apple-darwin
-            features: sprite-demo
+            features: proxy
           - runner: macos-15
             target: aarch64-apple-darwin
-            features: sprite-demo
+            features: proxy
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
             features: ''
@@ -50,9 +50,6 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.12'
       - name: Install the repository-pinned Rust toolchain
         run: |
           rustup show active-toolchain
@@ -61,12 +58,12 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Test release packaging
-        run: python -m unittest discover -s scripts -p 'test_package_release.py'
+        run: cargo test --locked -p xtask
       - name: Test default and optional features on the native OS
         run: |
           cargo test --locked --target "$RELEASE_TARGET" --all-targets
           cargo test --locked --target "$RELEASE_TARGET" --all-features --all-targets
-          cargo clippy --locked --target "$RELEASE_TARGET" --all-features --all-targets -- -D warnings
+          cargo clippy --workspace --locked --target "$RELEASE_TARGET" --all-features --all-targets -- -D warnings
       - name: Build the release executable
         run: |
           feature_args=()
@@ -76,13 +73,10 @@ jobs:
           cargo build --release --locked --target "$RELEASE_TARGET" --bin aegis "${feature_args[@]}"
       - name: Verify the optimized Sprite service
         if: runner.os != 'Windows'
-        run: python3 scripts/sprite_evidence.py --binary "target/$RELEASE_TARGET/release/aegis"
+        run: cargo test --release --locked --target "$RELEASE_TARGET" --features proxy --test sprite_workflow
       - name: Package and smoke-test the extracted download
         run: >-
-          python scripts/package_release.py
-          --tag "$RELEASE_TAG"
-          --target "$RELEASE_TARGET"
-          --features "$RELEASE_FEATURES"
+          cargo run --locked -p xtask -- package "$RELEASE_TAG" "$RELEASE_TARGET"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: release-${{ matrix.target }}
@@ -121,7 +115,7 @@ jobs:
           printf '%s\n' \
             'Experimental Aegis binaries. Download the archive matching your OS and CPU, extract it, and run `aegis --help` (`aegis.exe --help` on Windows). No Rust installation is required.' \
             '' \
-            'Linux (glibc 2.35+) and macOS archives include the Unix-only Sprite demo. Windows supports `demo` and `synthetic-agent`; the Unix broker, socket MCP client, and Sprite service are unavailable on Windows.' \
+            'Linux (glibc 2.35+) and macOS include the secret-injection proxy and native Sprite HTTP/MCP client. Windows supports `demo` and `synthetic-agent`; Unix services are unavailable on Windows.' \
             '' \
             'Each archive includes installation instructions, platform limits, licenses, and build metadata. Verify your download against SHA256SUMS. These experimental binaries are not distribution-signed or notarized and do not establish production security or deployed Sprite isolation.' \
             > release-notes.md

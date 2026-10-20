@@ -1,22 +1,72 @@
 # Aegis
 
-An experimental local capability broker for developer and agent workflows.
+An experimental Rust secret broker for developer tools and agent-managed applications.
 
-**Experimental capability broker; protected agent-blind application delivery is required but not yet implemented or verified.**
+Keep provider credentials on an owner-controlled host while applications run on hosts an agent can administer. Aegis supports several access patterns with different trust boundaries:
 
-Aegis mediates between a human, an agent, and an application. A human privately provisions credentials and approves bounded authority. An agent can request a reviewed operation or propose configuring two systems using secret references. The intended broker either uses the credential for the approved operation or delivers it directly to an approved isolated application's protected file, descriptor, or credential store. The agent receives only validated results or safe delivery status and must be unable to read the delivered token. Keeping a token out of a model's context and preventing agent-executed code from reading it are separate responsibilities.
+| Access pattern | How credentials are used | Current support |
+| --- | --- | --- |
+| **Service-scoped secret injection** | An authenticated service names secret references; Aegis injects them into an owner-approved HTTPS request. The service receives selected results. | Real encrypted storage, private provisioning/rotation, service ACLs and generic HTTP header injection on Linux/macOS (`proxy` feature). |
+| **Broker-executed operations** | An agent requests a typed operation; a human reviews the exact plan and the broker performs it. | Synthetic provider workflows, owner approval and native HTTP/MCP clients. |
+| **Protected application delivery** | The broker delivers a credential to a separately isolated application's protected channel or store. | Fixed-canary experiments and design contracts; operational delivery remains unimplemented. An agent-controlled recipient cannot keep a delivered key from that agent. |
+| **Broker-held signing** | A private key stays in the broker while a constrained operation is signed. | Disposable-key signing experiments; no generic real-key signing endpoint. |
 
-The primary intended workflow is episodic project setup and secret delivery/rotation, with a [wake-on-request-compatible broker lifecycle](docs/application-delivery.md#request-driven-lifecycle). After protected delivery, the recipient can use its provider directly while Aegis is idle. Per-call broker mediation is a separate optional mode; protected delivery and wake lifecycle remain unimplemented.
+## Start with the secret-injection proxy
 
-**Current stage: synthetic foundation.** This repository implements an in-memory Rust broker, a fake provider, an explicitly started Unix foreground broker, and a thin stdio MCP client. The opt-in [owner-controlled Sprite experiment](docs/sprite-demo.md) adds a loopback HTTP service, separate owner/agent authentication, exact owner review receipts, a generated fake key and an HTTP-backed stdio MCP client. An optional age experiment saves and restores only a fixed synthetic fixture in separate processes. There is no real credential input, live provider connection, operational vault, or production setup path. It is not independently audited. A same-user process is not an operating-system containment boundary.
+After publishing a release containing this feature:
+
+```sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/NathanaelG1/Aegis/main/install.sh | sh
+```
+
+The installer verifies the platform archive checksum and installs a native executable in `~/.local/bin`. No language runtime is needed. Older releases such as v0.0.3 do not contain the proxy; the installer refuses them. To use this checkout before its next release, run `cargo build --release --locked --features proxy --bin aegis`.
+
+Then open the guided terminal interface on your private Aegis host:
+
+```sh
+aegis
+```
+
+If your shell does not include the installation folder in PATH, run
+`~/.local/bin/aegis`; the installer prints the exact launch path.
+
+The console opens with Aegis's ASCII shield logo and walks you through creating
+a vault, adding a hidden API key, and connecting an application. Choose the
+endpoint, HTTP method, secret bindings, permitted response fields and call
+allowance through menus, then review and save. No policy JSON editing or setup
+commands are required. The dashboard also handles secret replacement, service
+pausing, token rotation, and starting/stopping a local proxy.
+
+Use **arrow keys** to move, **Enter** to select, and **Esc** to go back.
+Secrets stay hidden, policy drafts can be discarded, and saved changes survive
+restart. A proxy started from this console runs until you stop it or exit;
+unattended hosting uses your platform's service supervisor. See the
+[terminal walkthrough](docs/secret-proxy.md#guided-terminal-setup).
+
+### How applications call Aegis
+
+An application's requests name the secret references to inject:
+
+```json
+{
+  "request_id": "job-001",
+  "operation": "create-message",
+  "inject": ["service-api-key"],
+  "body": {"message": "Hello"}
+}
+```
+
+Aegis authenticates the service, checks its ACL and call allowance, attaches the key to the configured header, and calls the approved endpoint. Service credentials confer operation access; there is no raw-secret export API. Requests cannot supply arbitrary URLs or headers. TLS verification, response-field projection, rotation/revocation and durable replay protection enforce this boundary. See the [complete setup, service policy, API and recovery guide](docs/secret-proxy.md).
+
+Run Aegis on its own owner-controlled Sprite or host, and the application on the agent-controlled host. Keep Aegis administration, snapshots, private state and TLS routing out of the agent's reach. The owner and configured upstream remain trusted. Generic injection supports HTTP header credentials; protocols requiring request signatures need a separate signing adapter. It does not impose application-specific business or financial limits. This experimental project has not been independently audited or verified with your live provider or deployed Sprite isolation.
 
 ## Owner-controlled Sprite experiment
 
-For a prebuilt executable, see [downloadable binaries and installation](docs/releases.md). The tag-triggered release workflow builds Linux x64/arm64, macOS Intel/Apple Silicon and Windows x64 archives. Linux and macOS packages include `sprite-demo`; Windows currently provides only the synthetic CLI commands.
+For a prebuilt executable, see [downloadable binaries and installation](docs/releases.md). The tag-triggered release workflow builds Linux x64/arm64, macOS Intel/Apple Silicon and Windows x64 archives. Linux and macOS packages include the proxy, native Sprite client and `sprite-demo`; Windows currently provides only the synthetic CLI commands.
 
-Build with `cargo build --locked --features sprite-demo`, then use `aegis sprite-demo-init --state-dir <new-absolute-directory>` and `aegis sprite-demo-serve --state-dir <directory> --listen 127.0.0.1:7979`. The owner privately retains Sprite administration and `owner.key`; the agent receives only `agent.key` and uses bounded operations. The generated fake provider key remains inside the trusted broker. Provisioning, deployment and the remote TLS gateway/tunnel are owner-managed.
+Build with `cargo build --locked --features proxy`, then use `aegis sprite-demo-init --state-dir <new-absolute-directory>` and `aegis sprite-demo-serve --state-dir <directory> --listen 127.0.0.1:7979`. The owner privately retains Sprite administration and `owner.key`; the agent receives only `agent.key` and uses bounded operations. The generated fake provider key remains inside the trusted broker. Provisioning, deployment and the remote TLS gateway/tunnel are owner-managed.
 
-Run `python3 scripts/sprite_evidence.py --binary target/debug/aegis --output-dir Evidence/sprite-demo-local` to produce a fresh-key report, agent transcript and sanitized service log. The verifier checks successful use, role separation, exact approval, retries, revocation and restart behavior, then scans captured outputs for key disclosure. This is bounded API evidence, not proof of deployed OS/admin isolation. Follow the [complete setup and evidence guide](docs/sprite-demo.md) before deployment; use generated fake fixtures only.
+Run `cargo test --locked --features proxy --test sprite_workflow` for the native process/HTTP/MCP verifier. It checks successful use, role separation, exact approval, retries, revocation, restart behavior and key disclosure in captured client output. This is bounded API evidence, not proof of deployed OS/admin isolation. Follow the [complete setup and evidence guide](docs/sprite-demo.md); the Sprite demo uses generated fake fixtures only.
 
 ## Try the synthetic demo
 
@@ -38,7 +88,7 @@ For a separate human terminal and agent client, use `aegis synthetic-broker --so
 
 ## GitHub App preparation
 
-The first provider has a [fixed synthetic GitHub App exercise](docs/github-app.md): personal selected-repository binding, metadata-only token scope, mock JWT/exchange, bounded metadata results, expiry/refresh and explicit revocation tests. Run `cargo run --locked --offline --example github_app_spike`. It accepts no keys or live configuration. The subsequent [main-broker integration](docs/github-broker.md) adds an explicit synthetic V2 operation while preserving the legacy interface. A separate [synthetic intent journal](docs/github-intent-journal.md) tests sync-before-effect recording and read-only restart inspection with no restored authority. An optional [disposable-key signing experiment](docs/signing-spike.md) separately tests maintained-library RS256 and private sign-only leases; it accepts no keys. An explicit optional [approval-bound composition](docs/github-signed-composition.md) connects it to the synthetic broker while retaining the default mock path. Real-key custody and live use remain unavailable.
+The first provider has a [fixed synthetic GitHub App exercise](docs/github-app.md): personal selected-repository binding, metadata-only token scope, mock JWT/exchange, bounded metadata results, expiry/refresh and explicit revocation tests. Run `cargo run --locked --offline --example github_app_spike`. It accepts no keys or live configuration. The subsequent [main-broker integration](docs/github-broker.md) adds an explicit synthetic V2 operation while preserving the legacy interface. A separate [synthetic intent journal](docs/github-intent-journal.md) tests sync-before-effect recording and read-only restart inspection with no restored authority. An optional [disposable-key signing experiment](docs/signing-spike.md) separately tests maintained-library RS256 and private sign-only leases; it accepts no keys. An explicit optional [approval-bound composition](docs/github-signed-composition.md) connects it to the synthetic broker while retaining the default mock path. Real-key custody and live use remain unavailable in that GitHub-specific experiment; the generic proxy is a separate access pattern.
 
 ## Integrated synthetic vault milestone
 
@@ -46,7 +96,7 @@ The optional [vault-to-recipient exercise](docs/vault-delivery-spike.md) now joi
 
 ## Access-control direction
 
-The planned network API uses [vendor-neutral application authentication and exact ACLs](docs/access-control.md), with independent human control. Operators may add their own private networking; network membership or an IP allowlist never grants application access. A [TLS 1.3 fixture](docs/tls-transport.md) now carries the existing vault protocol over mutually authenticated encrypted records. It has no network listener, operational enrollment or independent human identity. The deployed network API and configurable operational ACLs remain unavailable.
+The protected-delivery design uses [vendor-neutral application authentication and exact ACLs](docs/access-control.md), with independent human control. Operators may add their own private networking; network membership or an IP allowlist never grants application access. A [TLS 1.3 fixture](docs/tls-transport.md) carries the experimental vault protocol over mutually authenticated encrypted records. Operational enrollment and independent human identity remain unavailable for protected delivery. The separate secret proxy implements service-token authentication and configurable operation/secret ACLs.
 
 ## Protected mechanism milestone
 
@@ -66,7 +116,7 @@ and the [operator trial plan](docs/operator-live-trial-plan.md).
 
 ## What is being built
 
-The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. Protected application delivery is an essential additional product requirement, not an optional plaintext-export convenience. Its [design contract](docs/application-delivery.md) specifies reference-only proposals, immutable human approval, recipient enrollment, safe status, revocation limits, and adversarial acceptance gates. The optional vault feature exercises delivery interfaces using fixed fixtures; production entry, external recipient integration and OS protections remain unimplemented or unverified. A useful live provider operation and an operational portable `age` backend also remain release work.
+The current bounded operation interface uses exact resource and credential bindings, explicit control approval, volatile foreground sessions, a fixed synthetic status adapter, and a thin stdio MCP client that shares the broker's policy engine. Protected application delivery is an essential additional product requirement, not an optional plaintext-export convenience. Its [design contract](docs/application-delivery.md) specifies reference-only proposals, immutable human approval, recipient enrollment, safe status, revocation limits, and adversarial acceptance gates. The optional vault feature exercises delivery interfaces using fixed fixtures; production entry, external recipient integration and OS protections remain unimplemented or unverified. The separate secret proxy provides encrypted age storage and live HTTPS header injection; it does not complete protected application delivery.
 
 The synthetic foundation focuses on deterministic policy and request state: prepare, request approval, invoke, and inspect a result. Grant-use reservation and revocation share a broker-owned serialization point. Retrying a request ID must return existing state or explicit uncertainty; it must not silently repeat an unknown external effect.
 
@@ -89,6 +139,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 | [Protected application delivery](docs/application-delivery.md) | Required agent-blind configuration workflow, immutable approval, OS boundary, and implementation gates; design only |
 | [Threat model](docs/threat-model.md) | Assets, adversaries, workflow limits, and evidence required for stronger modes |
 | [Standalone binary](docs/standalone-binary.md) | Local release artifact, broker/client executable layout, runtime requirements and Mac-only evidence |
+| [Secret-injection proxy](docs/secret-proxy.md) | Private provisioning, service ACLs, approved HTTPS headers and bounded results |
 | [Owner-controlled Sprite demo](docs/sprite-demo.md) | Optional fake-secret HTTP/MCP workflow, private role credentials, operator deployment handoff and disclosure evidence |
 | [Developer quickstart](docs/developer-quickstart.md) | Build, test, change, and debug safely |
 | [Agent quickstart](docs/agent-quickstart.md) | Invoke bounded operations without supplying credentials or manufacturing approval |
@@ -104,7 +155,7 @@ The agent surface has no raw-secret method, arbitrary execution method, approval
 
 ## Platform and release status
 
-The original full checkpoint was tested on macOS 26.6.2 arm64 with Rust 1.96.1. The subsequent GitHub synthetic slice and existing non-listener suites pass on Linux x86_64; 14 existing interface tests remain blocked there by denied Unix listener binding. See [verification](docs/verification.md) for exact checks and limits. A later private Linux synthetic pilot passed all baseline tests and actual GitHub foreground/MCP v2 workflow on source `e353a6b`; this is workflow evidence, not protection from its current agent administrative access. Windows transport support is absent. Protected application delivery, independent human authentication, desktop lifecycle handling, protected headless approval, storage durability, and OS isolation remain unimplemented or unverified. Linux, macOS, and Windows delivery arrangements are proposals requiring separate platform tests. The Sprite experiment adds distinct role-credential authentication, not physical human-presence proof.
+The original full checkpoint was tested on macOS 26.6.2 arm64 with Rust 1.96.1. The subsequent GitHub synthetic slice and existing non-listener suites pass on Linux x86_64; 14 existing interface tests remain blocked there by denied Unix listener binding. See [verification](docs/verification.md) for exact checks and limits. A later private Linux synthetic pilot passed all baseline tests and actual GitHub foreground/MCP v2 workflow on source `e353a6b`; this is workflow evidence, not protection from its current agent administrative access. Windows transport support is absent. Protected application delivery, independent human authentication, desktop lifecycle handling, protected headless approval, durability for the original synthetic broker, and OS isolation remain unimplemented or unverified. Linux, macOS, and Windows delivery arrangements are proposals requiring separate platform tests. The Sprite experiment adds distinct role-credential authentication, not physical human-presence proof.
 
 Aegis source and documentation are available under the [MIT license](LICENSE). Third-party dependencies retain their own licenses; see [third-party notices](THIRD_PARTY_NOTICES.md) and the dependency inventory. Public source availability does not establish a reviewed production release. The [security policy](SECURITY.md) is a draft for this experimental project. Contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md).
 

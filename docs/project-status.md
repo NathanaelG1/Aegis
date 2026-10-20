@@ -1,6 +1,8 @@
 # Project status
 
-Aegis is an experimental synthetic-only capability broker. Source and documentation are licensed under MIT; no production secrets product, live provider or audited release is available. The opt-in owner-controlled Sprite experiment now provides separate owner/agent credential authentication and exact approval; deployed client/admin isolation and physical human presence remain unverified. Protected agent-blind application delivery is required but not yet implemented or verified.
+**October 18 extension:** the optional Unix `proxy` feature adds real-secret age storage, private owner provisioning, service-scoped HTTP header injection and durable request reservations. See [setup and trust boundaries](secret-proxy.md) and [ADR 0020](adr/0020-service-scoped-secret-injection.md). The historical checkpoint descriptions below refer to the separate synthetic broker and protected-delivery experiments.
+
+Aegis is an experimental capability broker with a separate real-secret HTTP injection proxy. Source and documentation are licensed under MIT; no production security audit or deployed-isolation attestation is available. The opt-in owner-controlled Sprite experiment now provides separate owner/agent credential authentication and exact approval; deployed client/admin isolation and physical human presence remain unverified. Protected agent-blind application delivery is required but not yet implemented or verified.
 
 ## Protected mechanism checkpoint (9 October 2026)
 
@@ -51,7 +53,7 @@ The recovered 4979ae3 runtime is the starting point for three independent fixed-
 - Strict bounded JSON-lines, an explicitly started Unix foreground broker and a thin stdio MCP client using the same policy engine.
 - An optional fixed-fixture age recovery experiment with saved-kit fresh-process recovery, disabled restored grants and no retained sessions. It accepts no real credential input.
 - Architecture/threat contracts, developer/agent quickstarts, ADRs, security-policy draft, roadmap and dependency inventory.
-- Optional Unix `sprite-demo` HTTP service, private generation of separate role credentials and a fake provider key, exact one-use owner review receipts, explicit restart-instance binding, Python role clients/agent-only stdio MCP bridge, sanitized audit counters, and a reproducible fresh-key output-disclosure evidence harness. See [setup/evidence](sprite-demo.md) and [ADR 0019](adr/0019-owner-controlled-sprite-demo.md). Provisioning/deployment/gateway remain owner-managed.
+- Optional Unix `sprite-demo` HTTP service, private generation of separate role credentials and a fake provider key, exact one-use owner review receipts, explicit restart-instance binding, native Rust role clients/agent-only stdio MCP bridge, sanitized audit counters, and a reproducible fresh-key output-disclosure evidence harness. See [setup/evidence](sprite-demo.md) and [ADR 0019](adr/0019-owner-controlled-sprite-demo.md). Provisioning/deployment/gateway remain owner-managed.
 
 ## Observed checks
 

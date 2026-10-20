@@ -3,11 +3,16 @@ name = "aegis-broker"
 version = "0.1.0-experimental"
 edition = "2021"
 rust-version = "1.96"
-description = "Synthetic-only experimental local capability broker"
+description = "Experimental capability broker and service-scoped secret injection proxy"
 publish = false
 license = "MIT"
 repository = "https://github.com/NathanaelG1/Aegis"
 default-run = "aegis"
+
+[workspace]
+members = ["xtask"]
+default-members = ["."]
+resolver = "2"
 
 [features]
 default = []
@@ -15,6 +20,7 @@ storage-spike = ["dep:age"]
 sprite-demo = ["dep:axum", "dep:tokio", "dep:subtle"]
 vault-spike = ["storage-spike", "signing-spike", "dep:rustls", "dep:rcgen"]
 signing-spike = ["dep:jsonwebtoken", "dep:aws-lc-rs", "dep:pkcs8", "dep:base64", "dep:zeroize"]
+proxy = ["sprite-demo", "dep:age", "dep:sha2", "dep:zeroize", "dep:base64", "dep:rustls", "dep:tokio-rustls", "dep:webpki-roots", "dep:hyper", "dep:hyper-util", "dep:http-body-util"]
 
 [lib]
 name = "aegis"
@@ -38,9 +44,15 @@ base64 = { version = "=0.22.1", optional = true }
 zeroize = { version = "=1.9.0", optional = true }
 rustls = { version = "=0.23.45", default-features = false, features = ["std", "aws_lc_rs"], optional = true }
 rcgen = { version = "=0.14.10", default-features = false, features = ["crypto", "aws_lc_rs", "zeroize"], optional = true }
+sha2 = { version = "=0.10.9", optional = true }
+hyper = { version = "=1.12.0", default-features = false, features = ["http1", "client"], optional = true }
+hyper-util = { version = "=0.1.21", default-features = false, features = ["tokio"], optional = true }
+http-body-util = { version = "=0.1.5", optional = true }
+tokio-rustls = { version = "=0.26.4", default-features = false, optional = true }
+webpki-roots = { version = "=1.0.3", optional = true }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "=0.29.0", default-features = false, features = ["socket", "user"] }
+nix = { version = "=0.29.0", default-features = false, features = ["socket", "user", "term"] }
 
 [lints.rust]
 unsafe_code = "forbid"

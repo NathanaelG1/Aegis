@@ -26,12 +26,12 @@ Possession of `owner.key` authorizes owner actions. The service does not attest 
 On the owner-controlled Linux Sprite, build the checkout with its pinned Rust toolchain:
 
 ```sh
-cargo build --release --locked --features sprite-demo
+cargo build --release --locked --features proxy
 ./target/release/aegis sprite-demo-init --state-dir /home/sprite/aegis-private
 ./target/release/aegis sprite-demo-serve --state-dir /home/sprite/aegis-private --listen 127.0.0.1:7979
 ```
 
-These are operator instructions; the coding agent does not run provisioning or deployment commands. The build needs registry access initially. The binary needs no Rust toolchain at runtime. Python 3 is required on client/verifier hosts, not for serving the Rust API.
+These are operator instructions; the coding agent does not run provisioning or deployment commands. The build needs registry access initially. The binary needs no Rust toolchain at runtime. The client and verifier are native Rust; no interpreter is needed.
 
 Initialization requires a new absolute directory with existing, nonsymlink parents. It writes three private `0600` files under a new `0700` directory:
 
@@ -47,7 +47,7 @@ The fake fixture is deliberately plaintext on the owner's disk. Prefix checking 
 
 ## Transport and service lifecycle
 
-The service refuses nonloopback listeners. HTTP authentication is not encryption. For remote clients, provide an owner-managed TLS gateway/private network path to the loopback listener. The Python client accepts HTTPS with standard certificate validation; HTTP is allowed only for literal loopback IP addresses. It rejects redirects, URL credentials/query strings, and ambient proxy configuration.
+The service refuses nonloopback listeners. HTTP authentication is not encryption. For remote clients, provide an owner-managed TLS gateway/private network path to the loopback listener. The native client accepts HTTPS with standard certificate validation; HTTP is allowed only for literal loopback IP addresses. It rejects redirects, URL credentials/query strings, and ambient proxy configuration.
 
 For Sprite hosting, retain private Sprite URL access. If an outer gateway is needed, it must handle Sprite-level authentication itself and forward the caller's **Aegis** bearer credential to the broker; agents receive only the Aegis credential. Never give agents a general Sprite token to solve HTTP access. The outer gateway must not log Authorization headers or bodies, must enforce connection/header/time/size/rate limits, and must expose only the broker API. No TLS gateway or Sprite authentication relay is bundled here. An operator-only port-forward can validate the app before connecting that gateway. Do not place an administrative tunnel credential on an unrestricted agent host.
 
@@ -64,14 +64,14 @@ The following local example assumes an **already protected** tunnel at `127.0.0.
 Get the public instance ID using only the agent credential:
 
 ```sh
-python3 scripts/sprite_client.py --url http://127.0.0.1:7979 --token-file /absolute/agent-client/agent.key --role agent session
+aegis sprite-client --url http://127.0.0.1:7979 --token-file /absolute/agent-client/agent.key --role agent session
 ```
 
 Copy `instance_id` into `INSTANCE_ID` below. It is a non-secret broker-instance identifier. All CLI calls after session discovery require this explicit pin:
 
 ```sh
-python3 scripts/sprite_client.py --url http://127.0.0.1:7979 --token-file /absolute/agent-client/agent.key --role agent --instance-id INSTANCE_ID prepare_operation '{"request_id":"demo-1","profile_id":"issue-status","parameters":{"repository_id":4242,"issue_number":7}}'
-python3 scripts/sprite_client.py --url http://127.0.0.1:7979 --token-file /absolute/agent-client/agent.key --role agent --instance-id INSTANCE_ID request_approval '{"prepared_request_id":1}'
+aegis sprite-client --url http://127.0.0.1:7979 --token-file /absolute/agent-client/agent.key --role agent --instance-id INSTANCE_ID prepare_operation '{"request_id":"demo-1","profile_id":"issue-status","parameters":{"repository_id":4242,"issue_number":7}}'
+aegis sprite-client --url http://127.0.0.1:7979 --token-file /absolute/agent-client/agent.key --role agent --instance-id INSTANCE_ID request_approval '{"prepared_request_id":1}'
 ```
 
 Use the returned numeric handle, rather than assuming it is `1`. Invoking before approval returns `approval_required`; requesting approval only enters pending state. The agent can discover, prepare, request approval, invoke, inspect status and cancel. There is no secret read, arbitrary URL, exec, file access or approval operation.
@@ -82,8 +82,8 @@ For an MCP host, launch the provided stdio bridge with this generic configuratio
 {
   "mcpServers": {
     "aegis-sprite-demo": {
-      "command": "python3",
-      "args": ["/absolute/Aegis/scripts/sprite_client.py", "--url", "https://your-protected-gateway.example", "--token-file", "/absolute/agent-client/agent.key", "--role", "agent", "mcp"]
+      "command": "/absolute/path/to/aegis",
+      "args": ["sprite-client", "--url", "https://your-protected-gateway.example", "--token-file", "/absolute/agent-client/agent.key", "--role", "agent", "mcp"]
     }
   }
 }
@@ -96,9 +96,9 @@ The bridge pins the instance at startup, speaks the existing narrow MCP version 
 On the owner's trusted client host, get the current session ID with the owner credential. Then list pending plans or review the request handle supplied by the agent:
 
 ```sh
-python3 scripts/sprite_client.py --url http://127.0.0.1:7979 --token-file /absolute/owner-client/owner.key --role owner session
-python3 scripts/sprite_client.py --url http://127.0.0.1:7979 --token-file /absolute/owner-client/owner.key --role owner --instance-id INSTANCE_ID pending
-python3 scripts/sprite_client.py --url http://127.0.0.1:7979 --token-file /absolute/owner-client/owner.key --role owner --instance-id INSTANCE_ID review 1
+aegis sprite-client --url http://127.0.0.1:7979 --token-file /absolute/owner-client/owner.key --role owner session
+aegis sprite-client --url http://127.0.0.1:7979 --token-file /absolute/owner-client/owner.key --role owner --instance-id INSTANCE_ID pending
+aegis sprite-client --url http://127.0.0.1:7979 --token-file /absolute/owner-client/owner.key --role owner --instance-id INSTANCE_ID review 1
 ```
 
 `review` fetches and prints broker-resolved principal, exact request/resource/issue, credential reference/version, policy/profile revisions, effects, output categories, expiry and remaining budget. Typing `approve` sends a random one-use review receipt over the separately authenticated owner route. The broker compares the saved complete approval view in the core's atomic approval operation. Changed bindings/budget, cancellation, expiry or restart invalidate approval; extra rebinding fields are rejected. A receipt grants no owner rights to an agent token. Owner clients can also `cancel`, `revoke`, and request `evidence`. No owner method exports the fixture.
@@ -106,7 +106,7 @@ python3 scripts/sprite_client.py --url http://127.0.0.1:7979 --token-file /absol
 After approval, the agent invokes:
 
 ```sh
-python3 scripts/sprite_client.py --url http://127.0.0.1:7979 --token-file /absolute/agent-client/agent.key --role agent --instance-id INSTANCE_ID invoke_approved '{"prepared_request_id":1}'
+aegis sprite-client --url http://127.0.0.1:7979 --token-file /absolute/agent-client/agent.key --role agent --instance-id INSTANCE_ID invoke_approved '{"prepared_request_id":1}'
 ```
 
 Successful output is a run state plus `{ "repository_id": 4242, "issue_number": 7, "state": "open" }`. The fake key is used inside the broker/fake provider. Repeating the same request returns stored state without using the key again. A changed request under the same request ID conflicts. Cancellation returns the retained canceled run; it does not perform an operation.
@@ -124,15 +124,22 @@ Owner `inspect`/`cancel` take `prepared_request_id`; `approve` takes only `revie
 
 ## Reproduce the evidence
 
-Run on a trusted **local test host**, not through the agent's secret-restricted credentials:
+Run on a trusted local test host:
 
 ```sh
-cargo build --locked --features sprite-demo
-python3 scripts/sprite_evidence.py --binary target/debug/aegis --output-dir Evidence/sprite-demo-local
+cargo test --locked --features proxy --test sprite_workflow
 ```
 
-Choose a new output directory for every run. The verifier creates temporary role keys and a fresh random fake key, starts the real compiled server on loopback, and launches a separate MCP agent process with only its agent-token path, an agent working directory and a minimal environment. The owner verifier drives inspection/approval. It exercises the positive workflow, wrong/missing/duplicate authentication, role crossover, unknown/export routes, injection and scope rejection, exact approval, cancellation, revocation, concurrent idempotent retries, and restart replay. It reads the fake key only in the trusted verifier and scans all captured client responses, owner responses, subprocess output and service logs for the full fixture, its random suffix and both authentication keys in plaintext, hex and base64 forms before exporting artifacts.
+The native Rust verifier creates temporary role keys and a random fake provider key,
+starts the compiled service, and launches a separate MCP client process. It exercises
+role authentication, unknown/export routes, exact approval, cancellation, revocation,
+concurrent idempotent retries and restart replay. It checks captured MCP and retry
+responses for the fixture and role credentials. The owner-only `evidence` API exposes
+the authenticated fake-provider call count and bounded audit events. This test writes
+no exported evidence reports; its temporary state is removed when it exits.
 
-Output is `report.json` (checks, platform, binary/source SHA-256 and limits), `agent-transcript.jsonl` (agent-visible results/adversarial responses; no Authorization headers), and `service.log` (bounded-field audit events). The owner-only `evidence` API also provides the in-memory authenticated fake-provider dispatch count, remaining budget and last 256 audit events. It does not scan network traffic or prove isolation; the verifier correlates the count with its captures. Logs and reports are not signed, tamper-proof or independently attested. Audits are lost on process restart unless your trusted supervisor retains the sanitized logs.
-
-The evidence demonstrates that the exercised API and MCP paths used the fake key successfully without returning it in captured output. It does **not** establish that arbitrary agent code lacked filesystem/memory/admin access, that every conceivable encoding is absent, or that a deployed Sprite/gateway excludes agents. The local harness has both role credentials and no agent OS sandbox. Before using real secrets, establish the deployed authority boundary and separately implement/review custody, recovery, live provider transport and any required protected application delivery. See [ADR 0019](adr/0019-owner-controlled-sprite-demo.md).
+These checks establish the exercised API behavior, not filesystem, memory or host
+administrator isolation. The verifier controls both role credentials. Remote use
+still requires a protected gateway and an owner-controlled host. For real credentials,
+use the separately documented [secret-injection proxy](secret-proxy.md), not these
+synthetic demo routes. See [ADR 0019](adr/0019-owner-controlled-sprite-demo.md).
