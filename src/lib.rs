@@ -1,4 +1,4 @@
-//! Experimental, synthetic-only capability broker. See docs/threat-model.md.
+//! Experimental capability broker and optional secret proxy. See docs/threat-model.md.
 //! The embedding host is trusted. An `AgentClient` is an API boundary, not an OS sandbox.
 #![forbid(unsafe_code)]
 
@@ -15,6 +15,12 @@ pub mod vault;
 
 #[cfg(all(feature = "sprite-demo", unix))]
 pub mod sprite;
+
+#[cfg(all(feature = "proxy", unix))]
+pub mod proxy;
+
+#[cfg(all(feature = "proxy", unix))]
+pub mod sprite_client;
 
 #[cfg(unix)]
 pub mod ipc;

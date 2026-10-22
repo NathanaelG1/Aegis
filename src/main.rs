@@ -1,4 +1,4 @@
-//! Synthetic workflows only. Optional owner-controlled HTTP service uses generated fake fixtures.
+//! Experimental secret-injection proxy and separate synthetic capability workflows.
 use aegis::{
     fake::FakeProvider, protocol, Control, MonotonicClock, Parameters, PrepareInput, ProfileId,
     RequestId, SyntheticSetup,
@@ -16,17 +16,47 @@ fn main() {
 }
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    #[cfg(all(feature = "proxy", unix))]
+    {
+        use std::io::IsTerminal;
+        let interactive = std::io::stdin().is_terminal()
+            && std::io::stdout().is_terminal()
+            && std::env::var("TERM").is_ok_and(|term| term != "dumb");
+        if args.first().is_some_and(|arg| arg == "tui") && !interactive {
+            return Err("The guided UI needs an interactive terminal (TERM must not be dumb). Use aegis --help for scriptable commands.".into());
+        }
+        if (args.is_empty() && interactive) || args.as_slice() == ["tui"] {
+            return aegis::proxy::tui::run(None).map_err(Into::into);
+        }
+        if let [command, flag, path] = args.as_slice() {
+            if command == "tui" && flag == "--state-dir" {
+                return aegis::proxy::tui::run(Some(path.into())).map_err(Into::into);
+            }
+        }
+    }
+    #[cfg(all(feature = "proxy", unix))]
+    if args.first().is_some_and(|arg| arg == "proxy") {
+        return aegis::proxy::cli(&args[1..]).map_err(Into::into);
+    }
+    #[cfg(all(feature = "proxy", unix))]
+    if args.first().is_some_and(|arg| arg == "sprite-client") {
+        return aegis::sprite_client::cli(&args[1..]).map_err(Into::into);
+    }
     match args.as_slice() {
         [] => {
-            println!("Aegis experimental: synthetic-only capability broker\n\nUsage: aegis demo | synthetic-agent | --version\n       aegis synthetic-broker --socket-dir <new-absolute-directory>\n       aegis mcp --socket <absolute-socket-path>\n\nNo real-secret input, live provider, persistent vault, or containment claim.");
+            println!("Aegis experimental capability broker\n\nUsage: aegis demo | synthetic-agent | --version\n       aegis synthetic-broker --socket-dir <new-absolute-directory>\n       aegis mcp --socket <absolute-socket-path>\n\nRun aegis --help for the capabilities included in this build.");
             Ok(())
         }
         [arg] if arg == "--version" => {
-            println!("aegis {} (synthetic-only)", env!("CARGO_PKG_VERSION"));
+            println!("aegis {} (experimental)", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         [arg] if matches!(arg.as_str(), "--help" | "-h" | "help") => {
-            println!("Aegis experimental, synthetic-only\n\nCommands:\n  demo                  Scripted trusted-host policy demo\n  synthetic-agent       Standalone strict JSON-lines fixture (no control channel)\n  synthetic-broker --socket-dir NEW_ABSOLUTE_DIRECTORY\n                        Foreground Unix broker; private terminal controls\n  mcp --socket ABSOLUTE_SOCKET_PATH\n                        Legacy issue-status stdio client\n  synthetic-github-broker --socket-dir NEW_DIRECTORY --journal-dir NEW_DIRECTORY\n                        Fixed synthetic GitHub operation with retained intents\n  mcp-v2 --socket ABSOLUTE_SOCKET_PATH\n                        Version-2 typed-operation stdio client\n\nHuman control: inspect ID, approve ID, cancel ID, revoke, stop.\nNo real-secret input or live provider; see README.md for verified limits.");
+            #[cfg(all(feature = "proxy", unix))]
+            println!("Run aegis with no arguments to open the guided terminal UI.\n  tui [--state-dir ABSOLUTE_DIR]  Open a specific vault\n");
+            #[cfg(all(feature = "proxy", unix))]
+            println!("Owner-hosted secret injection:\n  proxy --state-dir ABSOLUTE_DIR init\n  proxy --state-dir DIR secret-put NAME [--stdin]\n  proxy --state-dir DIR secret-delete NAME\n  proxy --state-dir DIR service-add NAME POLICY.json\n  proxy --state-dir DIR service-set NAME POLICY.json\n  proxy --state-dir DIR service-disable|service-enable|service-rotate NAME\n  proxy --state-dir DIR status\n  proxy --state-dir DIR serve 127.0.0.1:7980\n  sprite-client --url ORIGIN --token-file FILE --role agent|owner [--instance-id ID] METHOD [JSON]\nSee docs/secret-proxy.md for permissions, TLS and custody boundaries.\n");
+            println!("Synthetic capability workflows\n\nCommands:\n  demo                  Scripted trusted-host policy demo\n  synthetic-agent       Standalone strict JSON-lines fixture (no control channel)\n  synthetic-broker --socket-dir NEW_ABSOLUTE_DIRECTORY\n                        Foreground Unix broker; private terminal controls\n  mcp --socket ABSOLUTE_SOCKET_PATH\n                        Legacy issue-status stdio client\n  synthetic-github-broker --socket-dir NEW_DIRECTORY --journal-dir NEW_DIRECTORY\n                        Fixed synthetic GitHub operation with retained intents\n  mcp-v2 --socket ABSOLUTE_SOCKET_PATH\n                        Version-2 typed-operation stdio client\n\nHuman control: inspect ID, approve ID, cancel ID, revoke, stop.\nThese synthetic workflows accept no real credentials; see README.md for verified limits.");
             #[cfg(all(feature = "sprite-demo", unix))]
             println!("\nOwner-controlled fake-secret experiment:\n  sprite-demo-init --state-dir NEW_ABSOLUTE_DIRECTORY\n  sprite-demo-serve --state-dir ABSOLUTE_DIRECTORY --listen LOOPBACK_IP:PORT\nSeparate owner/agent authentication; TLS gateway/tunnel and deployment are owner-managed.\nSee docs/sprite-demo.md; real secrets and protected application delivery are unsupported.");
             Ok(())

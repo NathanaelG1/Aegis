@@ -1,8 +1,34 @@
 # Threat model
 
+## Service-scoped secret proxy (October 18)
+
+The [proxy](secret-proxy.md) trusts the owner-controlled host, administrator, installed
+binary, policy, TLS gateway and configured upstream. The agent may administer a
+separate application host and possess that service's bearer token. It can exercise
+all calls allowed by that policy, including caller-controlled JSON bodies. It cannot
+select a destination or request arbitrary secret references or header destinations.
+This is scoped API authority, not per-call human approval or business-level spending
+control. Use narrow provider keys and narrow operations when granting authority.
+
+The vault is encrypted with age; its owner-only identity resides on the same host.
+This protects ciphertext-only copies, not root/same-UID access, full-host backups,
+process memory or rollback. Files, locks, intent reservations and results survive
+restart. Reservations are committed before dispatch; an uncertain outcome must be
+reconciled with the provider before a new request ID is used. Restoring an older
+backup can restore spent authority and requires disabling/reviewing services.
+
+Outgoing TLS verifies the configured host, ignores proxy environment variables and
+never follows redirects or retries. Responses contain selected JSON fields or status;
+common credential echoes are blocked. Trusted upstreams can still encode, fragment
+or transform secrets in ways no generic output filter can exclude. Response fields
+must not select arbitrary echo/debug payloads. The loopback API bounds bodies,
+body-read time, concurrent work and outbound time; the deployment gateway must bound
+connections, header reads and request rates. No gateway or Sprite has been deployed
+by these changes. See [ADR 0020](adr/0020-service-scoped-secret-injection.md).
+
 ## Owner-controlled Sprite fake-secret extension (October 17)
 
-The opt-in [HTTP experiment](sprite-demo.md) trusts an owner-administered Sprite, broker code/configuration, operator client, gateway/tunnel and in-process fake provider. The agent receives only an independently generated agent bearer credential and typed operation results. Separate routes and exact credential checks reject role crossover, while canonical owner review receipts bind approval through the existing core. Model vendor and agent-provided identity/approval fields do not grant authority. Neither role-key nor fixture containers have Debug/Serialize implementations; no HTTP method exports the fixture. The Python agent bridge loads only its agent token, rejects redirects/ambient proxies, requires remote TLS, and pins the broker instance.
+The opt-in [HTTP experiment](sprite-demo.md) trusts an owner-administered Sprite, broker code/configuration, operator client, gateway/tunnel and in-process fake provider. The agent receives only an independently generated agent bearer credential and typed operation results. Separate routes and exact credential checks reject role crossover, while canonical owner review receipts bind approval through the existing core. Model vendor and agent-provided identity/approval fields do not grant authority. Neither role-key nor fixture containers have Debug/Serialize implementations; no HTTP method exports the fixture. The native agent bridge loads only its agent token, rejects redirects/ambient proxies, requires remote TLS, and pins the broker instance.
 
 The generated fixture is plaintext on trusted disk, not operational encrypted storage. File checks are not atomic against a hostile administrator/same-UID writer. Compromised Sprite administration, owner credential custody, writable broker code, gateway logging, memory/debug access, unbounded edge connections and malicious trusted recipients remain outside the demonstrated API boundary. The loopback server requires an owner-managed protected transport and gateway limits for remote access. One token maps to one agent principal per service; it is not multi-tenant isolation. A local verifier knows both role credentials and scans exercised outputs; it cannot prove deployed administrative exclusion, human presence, universal non-disclosure or protected application delivery. [ADR 0019](adr/0019-owner-controlled-sprite-demo.md) supersedes the earlier remote-access exclusion only for this synthetic mode.
 
